@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Alumno, AlumnoClase, Acudiente, ClaseProgramada, Jornada
+from .models import Alumno, Acudiente, ClaseProgramada, Jornada
 
 
 @admin.register(Acudiente)
@@ -27,9 +27,3 @@ class ClaseProgramadaAdmin(admin.ModelAdmin):
     list_display = ('id_clase', 'jornada', 'fecha')
     list_filter = ('fecha', 'jornada__tipo_jornada')
     list_select_related = ('jornada',)
-
-
-@admin.register(AlumnoClase)
-class AlumnoClaseAdmin(admin.ModelAdmin):
-    list_display = ('alumno', 'clase')
-    list_select_related = ('alumno', 'clase')

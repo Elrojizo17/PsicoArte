@@ -16,7 +16,8 @@
     "primereact": "^10.9.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

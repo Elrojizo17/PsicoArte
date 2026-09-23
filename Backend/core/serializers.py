@@ -116,5 +116,5 @@ class AlumnoClaseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AlumnoClase
-        fields = ('id', 'ti', 'id_clase', 'alumno_detalle')
-        read_only_fields = ('id', 'alumno_detalle')
+        fields = ('ti', 'id_clase', 'alumno_detalle')
+        read_only_fields = ('alumno_detalle',)

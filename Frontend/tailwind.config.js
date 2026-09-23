@@ -4,13 +4,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        'primary-dark': '#0D47A1',
-        primary: '#2196F3',
-        'primary-light': '#90CAF9',
-        background: '#E3F2FD',
+        'primary-dark': '#087A18',
+        primary: '#1ABC0A',
+        'primary-light': '#B9E8B5',
+        accent: '#F5D928',
+        secondary: '#C51F24',
+        institutional: '#245B9E',
+        ink: '#263238',
+        border: '#DDE3E0',
+        background: '#F5F7F6',
       },
     },
   },
   plugins: [],
 }
-

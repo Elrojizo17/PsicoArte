@@ -8,6 +8,7 @@ import { ErrorState, LoadingState } from '../components/Feedback'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { api, endpoints } from '../services/api'
+import { confirmAction, showSuccess } from '../services/alerts'
 import type { Alumno, Clase, Jornada } from '../types'
 
 const hours = Array.from({ length: 10 }, (_, i) => i + 9)
@@ -42,11 +43,10 @@ export function ClasesPage() {
   const [selectionKeys, setSelectionKeys] = useState<SelectionMap>({})
   const [form, setForm] = useState<FormData>({ id_jornada: '', fecha: dateKey(new Date()) })
   const [editing, setEditing] = useState<number | null>(null)
-  const [currentClassId, setCurrentClassId] = useState<number | null>(null)
+  const [selectedClass, setSelectedClass] = useState<Clase | null>(null)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [assigning, setAssigning] = useState(false)
   const [error, setError] = useState('')
   const [week, setWeek] = useState(monday(new Date()))
 
@@ -101,7 +101,6 @@ export function ClasesPage() {
 
   const openNew = () => {
     setEditing(null)
-    setCurrentClassId(null)
     setSelectionKeys({})
     setForm({
       id_jornada: jornadas[0]?.id_jornada?.toString() || '',
@@ -112,7 +111,6 @@ export function ClasesPage() {
 
   const openEdit = (item: Clase) => {
     setEditing(item.id_clase)
-    setCurrentClassId(item.id_clase)
     seedSelection(item.alumnos?.map((student) => student.ti) || [])
     setForm({
       id_jornada: item.jornada_detalle?.id_jornada.toString() || '',
@@ -172,6 +170,7 @@ export function ClasesPage() {
     try {
       setSaving(true)
       setError('')
+      const wasEditing = Boolean(editing)
 
       const previous = editing
         ? classes.find((item) => item.id_clase === editing)?.alumnos?.map((student) => student.ti) || []
@@ -182,14 +181,13 @@ export function ClasesPage() {
         : await api.post<Clase>(endpoints.clases, form)
 
       const classId = response.data.id_clase
-      setCurrentClassId(classId)
       await assignSelectedStudents(classId, selectedStudents, previous)
 
       setOpen(false)
       setEditing(null)
       setSelectionKeys({})
-      setCurrentClassId(null)
       await load()
+      await showSuccess(wasEditing ? 'Clase actualizada' : 'Clase programada', 'La clase y sus alumnos se guardaron correctamente.')
     } catch {
       setError('No se pudo guardar la clase o alguna asignación de alumno.')
     } finally {
@@ -197,31 +195,11 @@ export function ClasesPage() {
     }
   }
 
-  const assignStudentsButton = async () => {
-    if (!currentClassId) {
-      setError('Primero guarda la clase programada para poder asignar alumnos.')
-      return
-    }
-
-    try {
-      setAssigning(true)
-      setError('')
-      const existing = classes.find((item) => item.id_clase === currentClassId)?.alumnos?.map((student) => student.ti) || []
-      await assignSelectedStudents(currentClassId, selectedStudents, existing)
-      await load()
-      const refreshedIds = classes.find((item) => item.id_clase === currentClassId)?.alumnos?.map((student) => student.ti) || []
-      seedSelection(refreshedIds)
-    } catch {
-      setError('No se pudieron asignar los alumnos seleccionados. Intenta de nuevo.')
-    } finally {
-      setAssigning(false)
-    }
-  }
-
   const remove = async (id: number) => {
-    if (!window.confirm('¿Eliminar esta clase programada?')) return
+    if (!await confirmAction('¿Eliminar clase programada?', 'Esta acción no se puede deshacer.')) return
     try {
       await api.delete(`${endpoints.clases}${id}/`)
+      await showSuccess('Clase eliminada', 'La clase se eliminó correctamente.')
       await load()
     } catch {
       setError('No se pudo eliminar la clase.')
@@ -235,12 +213,22 @@ export function ClasesPage() {
     return Math.max(0, (Number(start || 9) - 9) * 64)
   }
 
+  const openDetails = (item: Clase) => {
+    setSelectedClass(item)
+  }
+
+  const selectedClassStudents = selectedClass?.alumnos?.map((summary) => ({
+    summary,
+    detail: students.find((student) => student.ti === summary.ti),
+  })) || []
+
   return (
     <section className="page-enter">
       <PageHeader
         eyebrow="Agenda semanal"
-        title="Programar clases"
+        title="Programar Clases"
         description="Organiza las clases concretas y visualiza la semana de la escuela."
+        actionLabel="Nueva Clase"
         action={openNew}
       />
 
@@ -332,7 +320,17 @@ export function ClasesPage() {
                     <div
                       key={item.id_clase}
                       style={{ top: getOffset(item) + 4 }}
-                      className="group absolute left-1 right-1 min-h-14 rounded-lg border-l-4 border-primary-dark bg-primary/15 p-2 text-left shadow-sm"
+                      className="group absolute left-1 right-1 min-h-14 cursor-pointer rounded-lg border-l-4 border-primary-dark bg-primary/15 p-2 text-left shadow-sm transition hover:bg-primary/25"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Ver información de la clase del ${formatDate(item.fecha)}`}
+                      onClick={() => openDetails(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          openDetails(item)
+                        }
+                      }}
                     >
                       <p className="truncate text-xs font-bold text-primary-dark">
                         {item.jornada_detalle?.tipo_jornada || 'Clase programada'}
@@ -349,14 +347,20 @@ export function ClasesPage() {
                       <div className="absolute right-1 top-1 hidden gap-1 group-hover:flex">
                         <button
                           aria-label="Editar clase"
-                          onClick={() => openEdit(item)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openEdit(item)
+                          }}
                           className="rounded bg-white p-1 text-primary"
                         >
                           <Pencil size={11} />
                         </button>
                         <button
                           aria-label="Eliminar clase"
-                          onClick={() => void remove(item.id_clase)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void remove(item.id_clase)
+                          }}
                           className="rounded bg-white p-1 text-red-500"
                         >
                           <Trash2 size={11} />
@@ -371,9 +375,75 @@ export function ClasesPage() {
         </div>
       )}
 
+      {selectedClass && (
+        <Modal
+          title="Información de la clase"
+          onClose={() => setSelectedClass(null)}
+        >
+          <div className="grid gap-4">
+            <div className="grid gap-3 rounded-xl border border-primary-light/60 bg-background/50 p-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Jornada</p>
+                <p className="mt-1 font-bold text-primary-dark">
+                  {selectedClass.jornada_detalle?.tipo_jornada || 'Clase programada'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Día</p>
+                <p className="mt-1 font-semibold text-slate-700">
+                  {selectedClass.jornada_detalle?.dia_semana || '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Fecha de realización</p>
+                <p className="mt-1 font-semibold text-slate-700">{formatDate(selectedClass.fecha)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Horario</p>
+                <p className="mt-1 font-semibold text-slate-700">
+                  {selectedClass.jornada_detalle
+                    ? `${selectedClass.jornada_detalle.hora_inicio.slice(0, 5)} - ${selectedClass.jornada_detalle.hora_final.slice(0, 5)}`
+                    : '—'}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <Users size={18} className="text-primary" />
+                <h3 className="font-bold text-primary-dark">
+                  Alumnos inscritos ({selectedClassStudents.length})
+                </h3>
+              </div>
+              {selectedClassStudents.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-primary-light bg-white p-4 text-sm text-slate-500">
+                  No hay alumnos inscritos en esta clase.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {selectedClassStudents.map(({ summary, detail }) => (
+                    <div key={summary.ti} className="rounded-xl border border-border bg-white p-3">
+                      <p className="font-bold text-primary-dark">
+                        {detail?.nombre_1 || summary.nombre_1} {detail?.apellido_1 || summary.apellido_1}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">TI: {summary.ti}</p>
+                      {detail?.acudiente_detalle && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Acudiente: {detail.acudiente_detalle.nombre_1} {detail.acudiente_detalle.apellido_1}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {open && (
         <Modal title={editing ? 'Editar clase programada' : 'Programar una clase'} onClose={() => setOpen(false)}>
-          <form onSubmit={save} className="grid gap-5">
+          <form onSubmit={save} className="grid min-w-0 gap-5">
             <SelectField
               label="Jornada *"
               value={form.id_jornada}
@@ -389,32 +459,24 @@ export function ClasesPage() {
             </SelectField>
 
             <Field
-              label="Fecha *"
+              label="Fecha de realización *"
               type="date"
               value={form.fecha}
               required
               onChange={(e) => setForm({ ...form, fecha: e.target.value })}
             />
 
-            <div className="rounded-2xl border border-primary-light/70 bg-slate-50/70 p-3">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0 rounded-2xl border border-primary-light/70 bg-slate-50/70 p-3">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-bold text-primary-dark">Alumnos</p>
                   <p className="text-xs text-slate-500">Selecciona los estudiantes para la clase.</p>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   <span className="rounded-full bg-background px-3 py-1 text-xs font-bold text-primary-dark">
                     Alumnos seleccionados: {selectedCount}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => void assignStudentsButton()}
-                    disabled={selectedCount === 0 || assigning || !currentClassId}
-                    className="rounded-full bg-primary-dark px-4 py-2 text-xs font-bold text-white transition hover:bg-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {assigning ? 'Asignando...' : 'Asignar alumnos'}
-                  </button>
                 </div>
               </div>
 
@@ -423,13 +485,14 @@ export function ClasesPage() {
                   No hay alumnos disponibles.
                 </p>
               ) : (
-                <div className="student-table overflow-hidden rounded-xl border border-primary-light/70 bg-white">
+                <div className="student-table min-w-0 overflow-x-auto overflow-y-hidden rounded-xl border border-primary-light/70 bg-white">
                   <DataTable
                     value={students}
                     dataKey="ti"
                     emptyMessage="No hay alumnos disponibles."
                     scrollable
                     scrollHeight="260px"
+                    tableStyle={{ minWidth: '860px' }}
                   >
                     <Column
                       header={() => (
@@ -475,22 +538,18 @@ export function ClasesPage() {
               )}
             </div>
 
-            <div className="rounded-lg bg-background p-3 text-xs text-primary-dark">
-              La clase quedará asociada con los alumnos seleccionados y la base de datos evitará duplicados por la clave compuesta.
-            </div>
-
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-full border border-primary-light px-4 py-2 text-xs font-bold text-slate-600 hover:bg-background"
+                className="w-full rounded-full border border-primary-light px-4 py-2 text-xs font-bold text-slate-600 hover:bg-background sm:w-auto"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-full bg-primary-dark px-4 py-2 text-xs font-bold text-white transition hover:bg-primary disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-full bg-primary-dark px-4 py-2 text-xs font-bold text-white transition hover:bg-primary disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Guardar clase'}
               </button>

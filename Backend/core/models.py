@@ -90,6 +90,7 @@ class ClaseProgramada(models.Model):
 
 
 class AlumnoClase(models.Model):
+    pk = models.CompositePrimaryKey('alumno', 'clase')
     alumno = models.ForeignKey(
         Alumno,
         on_delete=models.CASCADE,

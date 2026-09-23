@@ -3,19 +3,19 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { font-family: 'DM Sans', sans-serif; color: #12304f; background: #d9edfc; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+:root { font-family: 'DM Sans', sans-serif; color: #263238; background: #f5f7f6; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f5f7f6; }
 button, input, select { font: inherit; }
 h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; }
 #root { min-height: 100vh; }
 .student-table .p-datatable-wrapper { overflow-x: auto; }
-.student-table .p-datatable-thead > tr > th { background: #eef5ff; color: #12304f; border-color: #b8d8fa; font-weight: 700; white-space: normal; }
-.student-table .p-datatable-tbody > tr > td { color: #24496d; border-color: #d9eafa; background: #ffffff; }
-.student-table .p-datatable-tbody > tr:nth-child(even) > td { background: #f8fbff; }
-.student-table .p-checkbox .p-checkbox-box { width: 1.25rem; height: 1.25rem; border: 2px solid #4778ad; background: #ffffff; }
-.student-table .p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box:hover { border-color: #244f82; background: #edf5ff; }
-.student-table .p-checkbox.p-highlight .p-checkbox-box { border-color: #244f82; background: #315f9b; }
+.student-table .p-datatable-thead > tr > th { background: #f5f7f6; color: #087a18; border-color: #dde3e0; font-weight: 700; white-space: normal; }
+.student-table .p-datatable-tbody > tr > td { color: #263238; border-color: #dde3e0; background: #ffffff; }
+.student-table .p-datatable-tbody > tr:nth-child(even) > td { background: #fbfcfb; }
+.student-table .p-checkbox .p-checkbox-box { width: 1.25rem; height: 1.25rem; border: 2px solid #8bd98a; background: #ffffff; }
+.student-table .p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box:hover { border-color: #087a18; background: #effbea; }
+.student-table .p-checkbox.p-highlight .p-checkbox-box { border-color: #087a18; background: #1abc0a; }
 .student-table .p-checkbox.p-highlight .p-checkbox-box .p-checkbox-icon { color: #ffffff; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .page-enter { animation: rise .35s ease-out both; }

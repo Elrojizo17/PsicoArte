@@ -1,0 +1,192 @@
+{
+  "info": {
+    "_postman_id": "a4a0c2f5-5d39-4a22-91e8-5c0a7e001001",
+    "name": "PsicoArte Backend",
+    "description": "CRUD de acudientes, alumnos, jornadas, clases programadas y relaciones alumno-clase.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api" },
+    { "key": "numero_documento", "value": "9001" },
+    { "key": "ti", "value": "1001" },
+    { "key": "id_jornada", "value": "1" },
+    { "key": "id_clase", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Acudientes",
+      "item": [
+        {
+          "name": "Listar acudientes",
+          "request": { "method": "GET", "url": "{{base_url}}/acudientes/" }
+        },
+        {
+          "name": "Crear acudiente",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"numero_documento\": \"9001\",\n  \"nombre_1\": \"Ana\",\n  \"nombre_2\": \"Maria\",\n  \"apellido_1\": \"Gomez\",\n  \"apellido_2\": \"Rojas\",\n  \"tipo_documento\": \"CC\",\n  \"telefono_1\": \"3000000000\",\n  \"telefono_2\": \"3010000000\"\n}" },
+            "url": "{{base_url}}/acudientes/"
+          }
+        },
+        {
+          "name": "Obtener acudiente",
+          "request": { "method": "GET", "url": "{{base_url}}/acudientes/{{numero_documento}}/" }
+        },
+        {
+          "name": "Actualizar acudiente",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"telefono_1\": \"3020000000\"\n}" },
+            "url": "{{base_url}}/acudientes/{{numero_documento}}/"
+          }
+        },
+        {
+          "name": "Eliminar acudiente",
+          "request": { "method": "DELETE", "url": "{{base_url}}/acudientes/{{numero_documento}}/" }
+        }
+      ]
+    },
+    {
+      "name": "Alumnos",
+      "item": [
+        {
+          "name": "Listar alumnos",
+          "request": { "method": "GET", "url": "{{base_url}}/alumnos/" }
+        },
+        {
+          "name": "Crear alumno",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"ti\": \"1001\",\n  \"nombre_1\": \"Luis\",\n  \"apellido_1\": \"Gomez\",\n  \"identificacion\": null,\n  \"tipo_sangre\": \"O+\",\n  \"numero_documento_acudiente\": \"{{numero_documento}}\",\n  \"fecha_nacimiento\": \"2015-05-20\"\n}" },
+            "url": "{{base_url}}/alumnos/"
+          }
+        },
+        {
+          "name": "Obtener alumno",
+          "request": { "method": "GET", "url": "{{base_url}}/alumnos/{{ti}}/" }
+        },
+        {
+          "name": "Actualizar alumno",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"tipo_sangre\": \"A+\"\n}" },
+            "url": "{{base_url}}/alumnos/{{ti}}/"
+          }
+        },
+        {
+          "name": "Eliminar alumno",
+          "request": { "method": "DELETE", "url": "{{base_url}}/alumnos/{{ti}}/" }
+        }
+      ]
+    },
+    {
+      "name": "Jornadas",
+      "item": [
+        {
+          "name": "Listar jornadas",
+          "request": { "method": "GET", "url": "{{base_url}}/jornadas/" }
+        },
+        {
+          "name": "Crear jornada",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"hora_inicio\": \"08:00:00\",\n  \"hora_final\": \"10:00:00\",\n  \"dia_semana\": \"Lunes\",\n  \"tipo_jornada\": \"Desarrollo Cognitivo\"\n}" },
+            "url": "{{base_url}}/jornadas/"
+          }
+        },
+        {
+          "name": "Obtener jornada",
+          "request": { "method": "GET", "url": "{{base_url}}/jornadas/{{id_jornada}}/" }
+        },
+        {
+          "name": "Actualizar jornada",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"tipo_jornada\": \"Musical\"\n}" },
+            "url": "{{base_url}}/jornadas/{{id_jornada}}/"
+          }
+        },
+        {
+          "name": "Eliminar jornada",
+          "request": { "method": "DELETE", "url": "{{base_url}}/jornadas/{{id_jornada}}/" }
+        }
+      ]
+    },
+    {
+      "name": "Clases programadas",
+      "item": [
+        {
+          "name": "Listar clases",
+          "request": { "method": "GET", "url": "{{base_url}}/clases/" }
+        },
+        {
+          "name": "Crear clase",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"id_jornada\": {{id_jornada}},\n  \"fecha\": \"2026-09-23\"\n}" },
+            "url": "{{base_url}}/clases/"
+          }
+        },
+        {
+          "name": "Obtener clase",
+          "request": { "method": "GET", "url": "{{base_url}}/clases/{{id_clase}}/" }
+        },
+        {
+          "name": "Actualizar clase",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"fecha\": \"2026-09-24\"\n}" },
+            "url": "{{base_url}}/clases/{{id_clase}}/"
+          }
+        },
+        {
+          "name": "Eliminar clase",
+          "request": { "method": "DELETE", "url": "{{base_url}}/clases/{{id_clase}}/" }
+        },
+        {
+          "name": "Listar alumnos de la clase",
+          "request": { "method": "GET", "url": "{{base_url}}/clases/{{id_clase}}/alumnos/" }
+        },
+        {
+          "name": "Agregar alumno a la clase",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"ti\": \"{{ti}}\"\n}" },
+            "url": "{{base_url}}/clases/{{id_clase}}/alumnos/"
+          }
+        },
+        {
+          "name": "Retirar alumno de la clase",
+          "request": { "method": "DELETE", "url": "{{base_url}}/clases/{{id_clase}}/alumnos/{{ti}}/" }
+        }
+      ]
+    },
+    {
+      "name": "Relación alumno-clase",
+      "item": [
+        {
+          "name": "Listar relaciones",
+          "request": { "method": "GET", "url": "{{base_url}}/alumno-clase/" }
+        },
+        {
+          "name": "Crear relación",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"ti\": \"{{ti}}\",\n  \"id_clase\": {{id_clase}}\n}" },
+            "url": "{{base_url}}/alumno-clase/"
+          }
+        }
+      ]
+    }
+  ]
+}

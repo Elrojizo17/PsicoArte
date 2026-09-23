@@ -1,0 +1,5 @@
+import { X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import type { ReactNode } from 'react'
+
+export function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) { return createPortal(<div className="fixed inset-0 z-50 overflow-y-auto bg-primary-dark/30 p-4 backdrop-blur-sm"><div className="flex min-h-full items-center justify-center"><div className="my-auto max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-primary-light bg-white p-6 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-primary">PsicoArte</p><h2 className="mt-1 text-xl font-bold text-primary-dark">{title}</h2></div><button onClick={onClose} aria-label="Cerrar" className="rounded-full p-2 text-slate-400 hover:bg-background hover:text-primary-dark"><X size={20}/></button></div>{children}</div></div></div>, document.body) }

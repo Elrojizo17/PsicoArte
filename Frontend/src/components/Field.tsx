@@ -1,0 +1,4 @@
+import type { InputHTMLAttributes, SelectHTMLAttributes } from 'react'
+
+export function Field({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string }) { return <label className="grid gap-1.5 text-sm font-semibold text-slate-600">{label}<input {...props} className="rounded-lg border border-primary-light/80 bg-white px-3 py-2.5 font-normal outline-none transition placeholder:text-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/15" /></label> }
+export function SelectField({ label, children, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { label: string }) { return <label className="grid gap-1.5 text-sm font-semibold text-slate-600">{label}<select {...props} className="rounded-lg border border-primary-light/80 bg-white px-3 py-2.5 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/15">{children}</select></label> }

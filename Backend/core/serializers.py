@@ -39,6 +39,7 @@ class AcudienteSerializer(serializers.ModelSerializer):
             'apellido_1',
             'apellido_2',
             'tipo_documento',
+            'correo',
             'telefono_1',
             'telefono_2',
             'telefono_3',

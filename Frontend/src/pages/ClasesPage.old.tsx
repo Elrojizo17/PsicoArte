@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Clock3, Pencil, Trash2, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock3, Pencil, Search, Trash2, Users } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
-import { Field, SelectField } from '../components/Field'
+import { Field, RequiredFieldsNotice, SelectField, showRequiredFieldMessage } from '../components/Field'
 import { ErrorState, LoadingState } from '../components/Feedback'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
@@ -41,6 +41,7 @@ export function ClasesPage() {
   const [jornadas, setJornadas] = useState<Jornada[]>([])
   const [students, setStudents] = useState<Alumno[]>([])
   const [selectionKeys, setSelectionKeys] = useState<SelectionMap>({})
+  const [studentSearch, setStudentSearch] = useState('')
   const [form, setForm] = useState<FormData>({ id_jornada: '', fecha: dateKey(new Date()) })
   const [editing, setEditing] = useState<number | null>(null)
   const [selectedClass, setSelectedClass] = useState<Clase | null>(null)
@@ -57,7 +58,21 @@ export function ClasesPage() {
     [selectionKeys],
   )
   const selectedCount = selectedStudents.length
-  const allSelected = students.length > 0 && students.every((student) => !!selectionKeys[student.ti])
+  const filteredStudents = useMemo(() => {
+    const query = studentSearch.trim().toLocaleLowerCase()
+    if (!query) return students
+
+    const normalize = (value?: string | null) => value?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() || ''
+    return students.filter((student) => [
+      student.ti,
+      student.identificacion,
+      student.nombre_1,
+      student.nombre_2,
+      student.apellido_1,
+      student.apellido_2,
+    ].some((value) => normalize(value).includes(normalize(query))))
+  }, [studentSearch, students])
+  const allSelected = filteredStudents.length > 0 && filteredStudents.every((student) => !!selectionKeys[student.ti])
 
   const load = async () => {
     try {
@@ -102,6 +117,7 @@ export function ClasesPage() {
   const openNew = () => {
     setEditing(null)
     setSelectionKeys({})
+    setStudentSearch('')
     setForm({
       id_jornada: jornadas[0]?.id_jornada?.toString() || '',
       fecha: dateKey(new Date()),
@@ -111,6 +127,7 @@ export function ClasesPage() {
 
   const openEdit = (item: Clase) => {
     setEditing(item.id_clase)
+    setStudentSearch('')
     seedSelection(item.alumnos?.map((student) => student.ti) || [])
     setForm({
       id_jornada: item.jornada_detalle?.id_jornada.toString() || '',
@@ -124,12 +141,12 @@ export function ClasesPage() {
   }
 
   const toggleAllStudents = () => {
-    if (students.length === 0) return
+    if (filteredStudents.length === 0) return
 
     if (allSelected) {
       setSelectionKeys((current) => {
         const next = { ...current }
-        students.forEach((student) => {
+        filteredStudents.forEach((student) => {
           delete next[student.ti]
         })
         return next
@@ -139,7 +156,7 @@ export function ClasesPage() {
 
     setSelectionKeys((current) => {
       const next = { ...current }
-      students.forEach((student) => {
+      filteredStudents.forEach((student) => {
         next[student.ti] = true
       })
       return next
@@ -443,7 +460,8 @@ export function ClasesPage() {
 
       {open && (
         <Modal title={editing ? 'Editar clase programada' : 'Programar una clase'} onClose={() => setOpen(false)}>
-          <form onSubmit={save} className="grid min-w-0 gap-5">
+          <form onSubmit={save} onInvalid={showRequiredFieldMessage} className="grid min-w-0 gap-5">
+            <RequiredFieldsNotice />
             <SelectField
               label="Jornada *"
               value={form.id_jornada}
@@ -479,6 +497,18 @@ export function ClasesPage() {
                   </span>
                 </div>
               </div>
+              <label className="mb-3 flex items-center gap-2 rounded-xl border border-primary-light/70 bg-white px-3 py-2.5 text-sm text-slate-500 focus-within:border-primary-dark focus-within:ring-2 focus-within:ring-primary/15">
+                <Search size={17} className="shrink-0 text-primary" aria-hidden="true" />
+                <span className="sr-only">Buscar alumno</span>
+                <input
+                  type="search"
+                  value={studentSearch}
+                  onChange={(event) => setStudentSearch(event.target.value)}
+                  placeholder="Buscar por TI, identificación o nombre"
+                  aria-label="Buscar alumnos por número de identificación o nombre"
+                  className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400"
+                />
+              </label>
 
               {students.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-primary-light bg-white p-4 text-sm text-slate-500">
@@ -487,7 +517,7 @@ export function ClasesPage() {
               ) : (
                 <div className="student-table min-w-0 overflow-x-auto overflow-y-hidden rounded-xl border border-primary-light/70 bg-white">
                   <DataTable
-                    value={students}
+                    value={filteredStudents}
                     dataKey="ti"
                     emptyMessage="No hay alumnos disponibles."
                     scrollable

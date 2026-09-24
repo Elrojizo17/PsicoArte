@@ -9,6 +9,7 @@ class Acudiente(models.Model):
     apellido_1 = models.CharField(max_length=100)
     apellido_2 = models.CharField(max_length=100, blank=True)
     tipo_documento = models.CharField(max_length=30)
+    correo = models.EmailField(max_length=254, blank=True)
     telefono_1 = models.CharField(max_length=30)
     telefono_2 = models.CharField(max_length=30, blank=True)
     telefono_3 = models.CharField(max_length=30, blank=True)

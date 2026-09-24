@@ -5,6 +5,7 @@ export interface Acudiente {
   apellido_1: string
   apellido_2?: string
   tipo_documento: string
+  correo?: string
   telefono_1: string
   telefono_2?: string
   telefono_3?: string

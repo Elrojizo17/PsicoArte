@@ -1,10 +1,10 @@
-import '../pages/PerfilPadre.css'
+import './DevelopmentPlaceholder.css'
 
-export function DevelopmentPlaceholder({ message }: { message: string }) {
-  return <main className="parent-profile-page">
-    <section className="parent-profile-card" aria-label={message}>
-      <img className="parent-profile-logo" src="/src/assets/logo.png" alt="PsicoArte" />
-      <h1>{message}</h1>
-    </section>
-  </main>
+export function DevelopmentPlaceholder({ message, inDashboard = false }: { message: string; inDashboard?: boolean }) {
+  return <section className={`development-placeholder${inDashboard ? ' development-placeholder--dashboard' : ''}`} aria-labelledby="development-placeholder-title">
+    <div className="development-placeholder__card">
+      <img className="development-placeholder__logo" src="/src/assets/logo.png" alt="PsicoArte" />
+      <h1 id="development-placeholder-title">{message}</h1>
+    </div>
+  </section>
 }

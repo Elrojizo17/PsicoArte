@@ -6,7 +6,10 @@ from .views import (
     AcudienteViewSet,
     ClaseProgramadaViewSet,
     JornadaViewSet,
+    login_view,
 )
+
+from django.urls import path
 
 router = DefaultRouter()
 router.register('acudientes', AcudienteViewSet, basename='acudiente')
@@ -15,4 +18,4 @@ router.register('jornadas', JornadaViewSet, basename='jornada')
 router.register('clases', ClaseProgramadaViewSet, basename='clase')
 router.register('alumno-clase', AlumnoClaseViewSet, basename='alumno-clase')
 
-urlpatterns = router.urls
+urlpatterns = [path('login/', login_view, name='login')] + router.urls

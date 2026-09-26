@@ -1,0 +1,38 @@
+.parent-profile-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at top left, #e6f3e7 0, transparent 42%), #f7f5ef;
+}
+
+.parent-profile-card {
+  width: min(100%, 520px);
+  display: grid;
+  justify-items: center;
+  gap: 24px;
+  padding: 42px 32px;
+  border: 1px solid #e8e9df;
+  border-radius: 24px;
+  background: #fffefa;
+  box-shadow: 0 18px 55px rgb(54 81 58 / 11%);
+  text-align: center;
+}
+
+.parent-profile-logo {
+  display: block;
+  width: min(210px, 70%);
+  height: 125px;
+  object-fit: contain;
+}
+
+.parent-profile-card h1 {
+  margin: 0;
+  color: #344b39;
+  font-size: clamp(1.5rem, 5vw, 2rem);
+}
+
+@media (max-width: 480px) {
+  .parent-profile-card { padding: 34px 22px; border-radius: 20px; }
+  .parent-profile-logo { width: min(175px, 70%); height: 102px; }
+}

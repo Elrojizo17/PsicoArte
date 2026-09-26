@@ -1,8 +1,12 @@
 from django.core.exceptions import ValidationError
+from django.contrib.auth.models import User
 from django.db import models
 
 
 class Acudiente(models.Model):
+    usuario = models.OneToOneField(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acudiente'
+    )
     numero_documento = models.CharField(max_length=30, primary_key=True)
     nombre_1 = models.CharField(max_length=100)
     nombre_2 = models.CharField(max_length=100, blank=True)

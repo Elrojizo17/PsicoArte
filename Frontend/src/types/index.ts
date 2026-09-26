@@ -10,6 +10,7 @@ export interface Acudiente {
   telefono_2?: string
   telefono_3?: string
   alumnos?: AlumnoSummary[]
+  usuario_username?: string | null
 }
 
 export interface AlumnoSummary { ti: string; nombre_1: string; apellido_1: string }

@@ -53,6 +53,24 @@ const formatAge = (value?: string | null) => {
 
 type FormData = { id_jornada: string; fecha: string }
 type SelectionMap = Record<string, boolean>
+type CalendarView = 'month' | 'week' | 'day'
+
+function MonthCalendar({ month, classes, onOpen }: { month: Date; classes: Clase[]; onOpen: (item: Clase) => void }) {
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1)
+  const startOffset = (firstDay.getDay() + 6) % 7
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7
+  const cells = Array.from({ length: totalCells }, (_, index) => {
+    const dayNumber = index - startOffset + 1
+    return dayNumber > 0 && dayNumber <= daysInMonth ? new Date(month.getFullYear(), month.getMonth(), dayNumber) : null
+  })
+  return <div className="overflow-x-auto rounded-2xl border border-primary-light/70 bg-white/80 shadow-sm"><div className="min-w-[700px]"><div className="grid grid-cols-7 border-b border-primary-light/50">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => <div key={day} className="p-3 text-center text-xs font-bold uppercase tracking-wider text-slate-400">{day}</div>)}</div><div className="grid grid-cols-7">{cells.map((day, index) => { const key = day ? dateKey(day) : `empty-${index}`; const dayClasses = day ? classes.filter(item => item.fecha === key) : []; return <div key={key} className="min-h-28 border-b border-l border-primary-light/30 p-2"><p className={`text-xs font-bold ${day && dateKey(day) === dateKey(new Date()) ? 'text-primary-dark' : 'text-slate-400'}`}>{day?.getDate() || ''}</p><div className="mt-1 grid gap-1">{dayClasses.map(item => <button key={item.id_clase} type="button" onClick={() => onOpen(item)} className="truncate rounded-md bg-primary/15 px-2 py-1 text-left text-[10px] font-semibold text-primary-dark hover:bg-primary/25">{item.jornada_detalle?.hora_inicio.slice(0, 5)} · {item.jornada_detalle?.tipo_jornada}</button>)}</div></div>})}</div></div></div>
+}
+
+function DayClasses({ day, classes, onOpen, onEdit, onRemove }: { day: Date; classes: Clase[]; onOpen: (item: Clase) => void; onEdit: (item: Clase) => void; onRemove: (id: number) => void }) {
+  const dayClasses = classes.filter(item => item.fecha === dateKey(day))
+  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{dayClasses.length === 0 ? <p className="rounded-2xl border border-dashed border-primary-light bg-white p-6 text-sm text-slate-500">No hay clases programadas para este día.</p> : dayClasses.map(item => <article key={item.id_clase} className="group rounded-2xl border border-primary-light/70 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><button type="button" onClick={() => onOpen(item)} className="block w-full text-left"><div className="flex items-start justify-between gap-3"><div><p className="font-bold text-primary-dark">{item.jornada_detalle?.tipo_jornada || 'Clase programada'}</p><p className="mt-1 flex items-center gap-1 text-sm font-semibold text-slate-600"><Clock3 size={15}/>{item.jornada_detalle?.hora_inicio.slice(0, 5)} - {item.jornada_detalle?.hora_final.slice(0, 5)}</p></div><Users size={19} className="text-primary"/></div><p className="mt-3 border-t border-border pt-3 text-xs text-slate-500">{item.alumnos?.length || 0} alumnos inscritos</p></button><div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" aria-label="Editar clase" onClick={() => onEdit(item)} className="rounded-lg p-2 text-primary hover:bg-background"><Pencil size={16}/></button><button type="button" aria-label="Eliminar clase" onClick={() => onRemove(item.id_clase)} className="rounded-lg p-2 text-red-500 hover:bg-red-50"><Trash2 size={16}/></button></div></article>)}</div>
+}
 
 export function ClasesPage() {
   const [classes, setClasses] = useState<Clase[]>([])
@@ -68,6 +86,7 @@ export function ClasesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [week, setWeek] = useState(monday(new Date()))
+  const [calendarView, setCalendarView] = useState<CalendarView>('week')
   const availableJornadas = useMemo(
     () => form.fecha
       ? jornadas.filter((jornada) => jornada.dia_semana === dayNames[new Date(`${form.fecha}T00:00:00`).getDay()])
@@ -122,12 +141,12 @@ export function ClasesPage() {
   }, [])
 
   const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => {
+    () => Array.from({ length: calendarView === 'day' ? 1 : 7 }, (_, i) => {
       const date = new Date(week)
       date.setDate(week.getDate() + i)
       return date
     }),
-    [week],
+    [calendarView, week],
   )
 
   const seedSelection = (ids: string[]) => {
@@ -268,6 +287,19 @@ export function ClasesPage() {
     detail: students.find((student) => student.ti === summary.ti),
   })) || []
 
+  const moveCalendar = (direction: number) => {
+    const next = new Date(week)
+    if (calendarView === 'month') next.setMonth(next.getMonth() + direction)
+    else next.setDate(next.getDate() + direction * (calendarView === 'day' ? 1 : 7))
+    setWeek(next)
+  }
+
+  const calendarLabel = calendarView === 'month'
+    ? new Intl.DateTimeFormat('es-CO', { month: 'long', year: 'numeric' }).format(week)
+    : calendarView === 'day'
+      ? displayDate.format(days[0])
+      : `${displayDate.format(days[0])} - ${displayDate.format(days[days.length - 1])}`
+
   return (
     <section className="page-enter">
       <PageHeader
@@ -288,43 +320,30 @@ export function ClasesPage() {
         <div className="flex items-center gap-2">
           <button
             aria-label="Semana anterior"
-            onClick={() => {
-              const d = new Date(week)
-              d.setDate(d.getDate() - 7)
-              setWeek(d)
-            }}
+            onClick={() => moveCalendar(-1)}
             className="rounded-lg p-2 text-primary hover:bg-background"
           >
             <ChevronLeft size={19} />
           </button>
           <button
             aria-label="Semana siguiente"
-            onClick={() => {
-              const d = new Date(week)
-              d.setDate(d.getDate() + 7)
-              setWeek(d)
-            }}
+            onClick={() => moveCalendar(1)}
             className="rounded-lg p-2 text-primary hover:bg-background"
           >
             <ChevronRight size={19} />
           </button>
           <span className="ml-2 text-sm font-bold capitalize text-primary-dark">
-            {displayDate.format(days[0])} - {displayDate.format(days[6])}
+            {calendarLabel}
           </span>
         </div>
 
-        <button
-          onClick={() => setWeek(monday(new Date()))}
-          className="rounded-full border border-primary-light px-4 py-2 text-xs font-bold text-primary-dark hover:bg-background"
-        >
-          Hoy
-        </button>
+        <div className="flex flex-wrap items-center gap-2"><div className="flex rounded-full border border-primary-light bg-white p-1">{(['month', 'week', 'day'] as CalendarView[]).map(view => <button key={view} type="button" onClick={() => setCalendarView(view)} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${calendarView === view ? 'bg-primary-dark text-white' : 'text-primary-dark hover:bg-background'}`}>{view === 'month' ? 'Mes' : view === 'week' ? 'Semana' : 'Día'}</button>)}</div><button onClick={() => setWeek(monday(new Date()))} className="rounded-full border border-primary-light px-4 py-2 text-xs font-bold text-primary-dark hover:bg-background">Hoy</button></div>
       </div>
 
       {loading ? (
         <LoadingState />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-primary-light/70 bg-white/80 shadow-sm">
+        calendarView === 'month' ? <MonthCalendar month={week} classes={classes} onOpen={openDetails} /> : calendarView === 'day' ? <DayClasses day={week} classes={classes} onOpen={openDetails} onEdit={openEdit} onRemove={(id) => void remove(id)} /> : <div className="overflow-x-auto rounded-2xl border border-primary-light/70 bg-white/80 shadow-sm">
           <div className="min-w-[850px]">
             <div className="grid grid-cols-[64px_repeat(7,minmax(105px,1fr))] border-b border-primary-light/50">
               <div className="p-3" />

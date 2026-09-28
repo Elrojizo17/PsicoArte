@@ -70,6 +70,69 @@ class Alumno(models.Model):
     def __str__(self):
         return f'{self.nombre_1} {self.apellido_1} ({self.ti})'
 
+    def detalle_pagos(self, as_of=None):
+        from datetime import date
+
+        as_of = as_of or date.today()
+        payment_list = list(self.pagos.order_by('fecha_pago', 'id_pago'))
+        remaining = {payment.id_pago: payment.clases_pagadas for payment in payment_list}
+        allocations = {payment.id_pago: [] for payment in payment_list}
+        first_payment = payment_list[0] if payment_list else None
+        enrolled_classes = self.inscripciones.select_related('clase').order_by('clase__fecha', 'clase__id_clase')
+        if first_payment:
+            enrolled_classes = enrolled_classes.filter(clase__fecha__gte=first_payment.fecha_pago)
+
+        for enrollment in enrolled_classes:
+            class_date = enrollment.clase.fecha
+            for payment in payment_list:
+                if payment.fecha_pago <= class_date and remaining[payment.id_pago] > 0:
+                    allocations[payment.id_pago].append(class_date)
+                    remaining[payment.id_pago] -= 1
+                    break
+
+        details = []
+        for payment in payment_list:
+            covered_dates = allocations[payment.id_pago]
+            details.append({
+                'pago': payment,
+                'clases_consumidas': [class_date for class_date in covered_dates if class_date <= as_of],
+                'clases_cubiertas': covered_dates,
+                'clases_disponibles': remaining[payment.id_pago],
+                'fecha_cubre_hasta': covered_dates[-1] if covered_dates else None,
+            })
+        return details
+
+    def resumen_pagos(self, as_of=None):
+        from datetime import date
+        from decimal import Decimal
+
+        as_of = as_of or date.today()
+        payments = self.pagos.order_by('fecha_pago', 'id_pago')
+        details = self.detalle_pagos(as_of)
+        total_paid = sum((detail['pago'].clases_pagadas for detail in details), 0)
+        consumed = sum((len(detail['clases_consumidas']) for detail in details), 0)
+        available = sum((detail['clases_disponibles'] for detail in details), 0)
+        covered_dates = [class_date for detail in details for class_date in detail['clases_cubiertas']]
+        next_payment_date = None
+        if total_paid and available == 0:
+            next_payment_date = self.inscripciones.filter(clase__fecha__gt=as_of).order_by('clase__fecha', 'clase__id_clase').values_list('clase__fecha', flat=True).first()
+        if total_paid == 0:
+            state = 'sin_pago'
+        elif available > 0:
+            state = 'vigente'
+        else:
+            state = 'vencido'
+        return {
+            'clases_pagadas': total_paid,
+            'clases_impartidas': consumed,
+            'clases_disponibles': available,
+            'estado_pago': state,
+            'fecha_ultimo_pago': payments.order_by('-fecha_pago', '-id_pago').values_list('fecha_pago', flat=True).first(),
+            'fecha_proximo_pago': next_payment_date,
+            'fecha_cubre_hasta': max(covered_dates) if covered_dates else None,
+            'valor_pagado': sum((payment.valor_pagado for payment in payments), Decimal('0.00')),
+        }
+
 
 class Jornada(models.Model):
     ESTIMULACION_TEMPRANA = 'Estimulación Temprana'
@@ -146,3 +209,76 @@ class AlumnoClase(models.Model):
 
     def __str__(self):
         return f'{self.alumno_id} - {self.clase_id}'
+
+
+class Asistencia(models.Model):
+    PROGRAMADA = 'programada'
+    PRESENTE = 'presente'
+    AUSENTE = 'ausente'
+    ESTADOS = (
+        (PROGRAMADA, 'Programada'),
+        (PRESENTE, 'Presente'),
+        (AUSENTE, 'Ausente'),
+    )
+
+    id_asistencia = models.AutoField(primary_key=True)
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='asistencias')
+    clase = models.ForeignKey(ClaseProgramada, on_delete=models.CASCADE, related_name='asistencias')
+    estado = models.CharField(max_length=20, choices=ESTADOS, default=PROGRAMADA)
+    observacion = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'asistencia'
+        ordering = ['-clase__fecha', '-id_asistencia']
+        constraints = [
+            models.UniqueConstraint(fields=['alumno', 'clase'], name='uq_asistencia_alumno_clase'),
+        ]
+
+    def __str__(self):
+        return f'{self.alumno_id} - {self.clase_id} - {self.estado}'
+
+
+class Conversacion(models.Model):
+    acudiente = models.OneToOneField(Acudiente, on_delete=models.CASCADE, related_name='conversacion')
+    creada_en = models.DateTimeField(auto_now_add=True)
+    activa = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'conversacion'
+        ordering = ['-creada_en']
+
+    def __str__(self):
+        return f'Conversación con {self.acudiente}'
+
+
+class Mensaje(models.Model):
+    conversacion = models.ForeignKey(Conversacion, on_delete=models.CASCADE, related_name='mensajes')
+    remitente = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='mensajes_enviados')
+    cuerpo = models.TextField(blank=True)
+    archivo = models.FileField(upload_to='mensajeria/%Y/%m/', null=True, blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    leido_por_acudiente = models.BooleanField(default=False)
+    leido_por_personal = models.BooleanField(default=False)
+    automatico = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'mensaje'
+        ordering = ['creado_en', 'id']
+
+    def __str__(self):
+        return f'Mensaje {self.id} en conversación {self.conversacion_id}'
+
+
+class Pago(models.Model):
+    id_pago = models.AutoField(primary_key=True)
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='pagos', db_column='ti_alumno')
+    fecha_pago = models.DateField()
+    clases_pagadas = models.PositiveIntegerField()
+    valor_pagado = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        db_table = 'pago'
+        ordering = ['-fecha_pago', '-id_pago']
+
+    def __str__(self):
+        return f'{self.alumno_id} - {self.fecha_pago} ({self.clases_pagadas} clases)'

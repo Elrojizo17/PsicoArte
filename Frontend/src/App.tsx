@@ -4,7 +4,6 @@ import { AppLayout } from './components/AppLayout'
 import { AcudientesPage } from './pages/AcudientesPage'
 import { AlumnosPage } from './pages/AlumnosPage'
 import { ClasesPage } from './pages/ClasesPage'
-import { JornadaPage } from './pages/JornadaPage'
 import { PerfilPadre } from './pages/PerfilPadre'
 import { AgendaCitasPage } from './pages/AgendaCitasPage'
 import { CertificadosPage } from './pages/CertificadosPage'
@@ -26,7 +25,6 @@ function App() {
         <Route path="/" element={<Navigate to="/clases" replace />} />
         <Route path="/acudientes" element={<AcudientesPage />} />
         <Route path="/alumnos" element={<AlumnosPage />} />
-        <Route path="/jornada" element={<JornadaPage />} />
         <Route path="/clases" element={<ClasesPage />} />
         <Route path="/agenda-citas" element={<AgendaCitasPage />} />
         <Route path="/certificados" element={<CertificadosPage />} />

@@ -3,16 +3,36 @@ from django.contrib.auth.models import User
 from django.db import models
 
 
+JORNADAS_MUSICALES = (
+    ('Lunes', '11:15', '12:00', 'Estimulación Temprana'),
+    ('Lunes', '16:30', '17:15', 'Estimulación Temprana'),
+    ('Lunes', '17:15', '18:00', 'Iniciación Musical'),
+    ('Lunes', '18:00', '18:45', 'Ensamble Musical'),
+    ('Martes', '11:15', '12:00', 'Estimulación Temprana'),
+    ('Martes', '16:30', '17:15', 'Estimulación Temprana'),
+    ('Martes', '17:15', '18:00', 'Iniciación Musical'),
+    ('Martes', '18:00', '18:45', 'Ensamble Musical'),
+    ('Miércoles', '11:15', '12:00', 'Estimulación Temprana'),
+    ('Miércoles', '16:30', '17:15', 'Estimulación Temprana'),
+    ('Jueves', '11:15', '12:00', 'Estimulación Temprana'),
+    ('Jueves', '16:30', '17:15', 'Estimulación Temprana'),
+    ('Jueves', '17:15', '18:00', 'Iniciación Musical'),
+    ('Jueves', '18:00', '18:45', 'Ensamble Musical'),
+    ('Viernes', '17:00', '17:45', 'Iniciación Musical'),
+    ('Viernes', '17:45', '18:30', 'Ensamble Musical'),
+)
+
+
 class Acudiente(models.Model):
     usuario = models.OneToOneField(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acudiente'
     )
-    numero_documento = models.CharField(max_length=30, primary_key=True)
+    numero_documento = models.CharField(max_length=30, primary_key=True, blank=True)
     nombre_1 = models.CharField(max_length=100)
     nombre_2 = models.CharField(max_length=100, blank=True)
     apellido_1 = models.CharField(max_length=100)
     apellido_2 = models.CharField(max_length=100, blank=True)
-    tipo_documento = models.CharField(max_length=30)
+    tipo_documento = models.CharField(max_length=30, blank=True)
     correo = models.EmailField(max_length=254, blank=True)
     telefono_1 = models.CharField(max_length=30)
     telefono_2 = models.CharField(max_length=30, blank=True)
@@ -27,13 +47,14 @@ class Acudiente(models.Model):
 
 
 class Alumno(models.Model):
-    ti = models.CharField(max_length=30, primary_key=True)
+    ti = models.CharField(max_length=30, primary_key=True, blank=True)
     nombre_1 = models.CharField(max_length=100)
     nombre_2 = models.CharField(max_length=100, blank=True)
     apellido_1 = models.CharField(max_length=100)
     apellido_2 = models.CharField(max_length=100, blank=True)
     identificacion = models.CharField(max_length=100, null=True, blank=True)
     tipo_sangre = models.CharField(max_length=5, blank=True)
+    eps = models.CharField(max_length=150, blank=True)
     acudiente = models.ForeignKey(
         Acudiente,
         on_delete=models.PROTECT,
@@ -51,11 +72,16 @@ class Alumno(models.Model):
 
 
 class Jornada(models.Model):
-    DESARROLLO_COGNITIVO = 'Desarrollo Cognitivo'
-    MUSICAL = 'Musical'
+    ESTIMULACION_TEMPRANA = 'Estimulación Temprana'
+    ESTIMULACION_INICIAL = ESTIMULACION_TEMPRANA
+    INICIACION_MUSICAL = 'Iniciación Musical'
+    ENSAMBLE_MUSICAL = 'Ensamble Musical'
+    DESARROLLO_COGNITIVO = ESTIMULACION_INICIAL
+    MUSICAL = ENSAMBLE_MUSICAL
     TIPOS_JORNADA = (
-        (DESARROLLO_COGNITIVO, 'Desarrollo Cognitivo'),
-        (MUSICAL, 'Musical'),
+        (ESTIMULACION_TEMPRANA, 'Estimulación Temprana'),
+        (INICIACION_MUSICAL, 'Iniciación Musical'),
+        (ENSAMBLE_MUSICAL, 'Ensamble Musical'),
     )
 
     id_jornada = models.AutoField(primary_key=True)

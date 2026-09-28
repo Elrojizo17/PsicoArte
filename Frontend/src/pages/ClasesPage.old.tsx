@@ -21,6 +21,8 @@ const monday = (base: Date) => {
 }
 const displayDay = new Intl.DateTimeFormat('es-CO', { weekday: 'short' })
 const displayDate = new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short' })
+const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const displayStudentId = (ti: string) => ti.startsWith('ALU-') ? 'No disponible' : ti || 'No disponible'
 
 const formatDate = (value?: string | null) => {
   if (!value) return '—'
@@ -31,6 +33,22 @@ const formatDate = (value?: string | null) => {
     month: '2-digit',
     year: 'numeric',
   }).format(date)
+}
+
+const formatAge = (value?: string | null) => {
+  if (!value) return '—'
+  const birthDate = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(birthDate.getTime())) return '—'
+
+  const today = new Date()
+  let age = today.getFullYear() - birthDate.getFullYear()
+  const birthdayHasPassed = (
+    today.getMonth() > birthDate.getMonth()
+    || (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate())
+  )
+  if (!birthdayHasPassed) age -= 1
+
+  return age >= 0 ? `${age} ${age === 1 ? 'año' : 'años'}` : '—'
 }
 
 type FormData = { id_jornada: string; fecha: string }
@@ -50,6 +68,12 @@ export function ClasesPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [week, setWeek] = useState(monday(new Date()))
+  const availableJornadas = useMemo(
+    () => form.fecha
+      ? jornadas.filter((jornada) => jornada.dia_semana === dayNames[new Date(`${form.fecha}T00:00:00`).getDay()])
+      : [],
+    [form.fecha, jornadas],
+  )
 
   const selectedStudents = useMemo(
     () => Object.entries(selectionKeys)
@@ -119,7 +143,7 @@ export function ClasesPage() {
     setSelectionKeys({})
     setStudentSearch('')
     setForm({
-      id_jornada: jornadas[0]?.id_jornada?.toString() || '',
+      id_jornada: '',
       fecha: dateKey(new Date()),
     })
     setOpen(true)
@@ -178,6 +202,11 @@ export function ClasesPage() {
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
+
+    if (!form.fecha) {
+      setError('Selecciona primero la fecha de realización.')
+      return
+    }
 
     if (!form.id_jornada) {
       setError('Selecciona una jornada para programar la clase.')
@@ -443,7 +472,7 @@ export function ClasesPage() {
                       <p className="font-bold text-primary-dark">
                         {detail?.nombre_1 || summary.nombre_1} {detail?.apellido_1 || summary.apellido_1}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">TI: {summary.ti}</p>
+                      <p className="mt-1 text-xs text-slate-500">TI: {displayStudentId(summary.ti)}</p>
                       {detail?.acudiente_detalle && (
                         <p className="mt-1 text-xs text-slate-500">
                           Acudiente: {detail.acudiente_detalle.nombre_1} {detail.acudiente_detalle.apellido_1}
@@ -462,27 +491,30 @@ export function ClasesPage() {
         <Modal title={editing ? 'Editar clase programada' : 'Programar una clase'} onClose={() => setOpen(false)}>
           <form onSubmit={save} onInvalid={showRequiredFieldMessage} className="grid min-w-0 gap-5">
             <RequiredFieldsNotice />
-            <SelectField
-              label="Jornada *"
-              value={form.id_jornada}
-              required
-              onChange={(e) => setForm({ ...form, id_jornada: e.target.value })}
-            >
-              <option value="">Selecciona una jornada</option>
-              {jornadas.map((j) => (
-                <option key={j.id_jornada} value={j.id_jornada}>
-                  {j.tipo_jornada} · {j.dia_semana} · {j.hora_inicio.slice(0, 5)} - {j.hora_final.slice(0, 5)}
-                </option>
-              ))}
-            </SelectField>
-
             <Field
               label="Fecha de realización *"
               type="date"
               value={form.fecha}
               required
-              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+              onChange={(e) => setForm({ ...form, fecha: e.target.value, id_jornada: '' })}
             />
+
+            <SelectField
+              label="Jornada *"
+              value={form.id_jornada}
+              required
+              disabled={!form.fecha}
+              onChange={(e) => setForm({ ...form, id_jornada: e.target.value })}
+            >
+              <option value="">
+                {form.fecha ? 'Selecciona una jornada' : 'Selecciona primero la fecha'}
+              </option>
+              {availableJornadas.map((j) => (
+                <option key={j.id_jornada} value={j.id_jornada}>
+                  {j.dia_semana} · {j.tipo_jornada} · {j.hora_inicio.slice(0, 5)} - {j.hora_final.slice(0, 5)}
+                </option>
+              ))}
+            </SelectField>
 
             <div className="min-w-0 rounded-2xl border border-primary-light/70 bg-slate-50/70 p-3">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -553,8 +585,8 @@ export function ClasesPage() {
                     <Column header="Identificación" body={(row: Alumno) => row.identificacion || '—'} />
                     <Column field="tipo_sangre" header="Tipo de sangre" body={(row: Alumno) => row.tipo_sangre || '—'} />
                     <Column
-                      header="Fecha de nacimiento"
-                      body={(row: Alumno) => formatDate(row.fecha_nacimiento || undefined)}
+                      header="Edad"
+                      body={(row: Alumno) => formatAge(row.fecha_nacimiento)}
                     />
                     <Column
                       header="Acudiente"

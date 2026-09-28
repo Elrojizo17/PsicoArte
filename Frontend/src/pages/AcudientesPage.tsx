@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
+import axios from 'axios'
 import { ChevronDown, ChevronUp, Pencil, Phone, Trash2, Users } from 'lucide-react'
-import { Field, RequiredFieldsNotice, SelectField, showRequiredFieldMessage } from '../components/Field'
+import { Field, RequiredFieldsNotice, SelectField, requiredFieldMessage, showRequiredFieldMessage } from '../components/Field'
 import { ErrorState, LoadingState } from '../components/Feedback'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
@@ -10,6 +11,9 @@ import type { Acudiente, Alumno } from '../types'
 
 type FormData = Omit<Acudiente, 'alumnos' | 'usuario_username'>
 const documentTypes = ['CC', 'CE', 'PPT', 'PA', 'PEP'] as const
+const displayDocument = (type: string, document: string) => (
+  document.startsWith('ACU-') ? 'No disponible' : [type, document].filter(Boolean).join(' · ') || 'No disponible'
+)
 const empty: FormData = {
   numero_documento: '', nombre_1: '', nombre_2: '', apellido_1: '', apellido_2: '',
   tipo_documento: 'CC', correo: '', telefono_1: '', telefono_2: '', telefono_3: '',
@@ -26,6 +30,7 @@ export function AcudientesPage() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [formError, setFormError] = useState('')
 
   const linkedUsername = editing
     ? items.find(item => item.numero_documento === editing)?.usuario_username ?? ''
@@ -56,6 +61,7 @@ export function AcudientesPage() {
     setForm(empty)
     setUsername('')
     setPassword('')
+    setFormError('')
     setOpen(true)
   }
 
@@ -64,11 +70,13 @@ export function AcudientesPage() {
     setForm(item)
     setUsername(item.usuario_username ?? '')
     setPassword('')
+    setFormError('')
     setOpen(true)
   }
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
+    setFormError('')
     const wasEditing = Boolean(editing)
     const credentials = {
       ...(!hasAccount && username.trim() ? { username: username.trim() } : {}),
@@ -91,8 +99,15 @@ export function AcudientesPage() {
         'La información se guardó correctamente.',
       )
       void load()
-    } catch {
-      setError('No se pudo guardar el registro. Revisa los campos y las credenciales.')
+    } catch (reason) {
+      const data = axios.isAxiosError(reason) ? reason.response?.data : null
+      const messages = data && typeof data === 'object'
+        ? Object.entries(data as Record<string, unknown>).flatMap(([field, value]) => {
+          const values = Array.isArray(value) ? value : [value]
+          return values.map(message => `${field}: ${String(message)}`)
+        })
+        : []
+      setFormError(messages.join(' ') || 'No se pudo guardar el registro. Revisa los campos y las credenciales.')
     }
   }
 
@@ -126,7 +141,7 @@ export function AcudientesPage() {
         return <Fragment key={item.numero_documento}>
           <div className="grid gap-3 border-b border-primary-light/30 px-5 py-4 last:border-0 md:grid-cols-[1.2fr_1fr_1fr_1fr_auto] md:items-center md:gap-4">
             <div><p className="font-bold text-primary-dark">{item.nombre_1} {item.nombre_2} {item.apellido_1} {item.apellido_2}</p><p className="text-xs text-slate-400">Responsable registrado</p></div>
-            <span className="text-sm text-slate-600">{item.tipo_documento} · {item.numero_documento}</span>
+            <span className="text-sm text-slate-600">{displayDocument(item.tipo_documento, item.numero_documento)}</span>
             <span className="flex items-center gap-2 text-sm text-slate-600"><Phone size={15} className="text-primary" />{item.telefono_1}</span>
             <button type="button" onClick={() => setExpanded(isExpanded ? null : item.numero_documento)} className="flex items-center gap-2 text-left text-sm font-semibold text-primary-dark hover:text-primary" aria-expanded={isExpanded} aria-label={`Ver ${assignedStudents.length} alumnos`}><Users size={15} className="text-primary" />{assignedStudents.length}{isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
             <div className="flex gap-2"><button aria-label="Editar acudiente" onClick={() => startEdit(item)} className="rounded-lg p-2 text-primary hover:bg-background"><Pencil size={17} /></button><button aria-label="Eliminar acudiente" onClick={() => void remove(item.numero_documento)} className="rounded-lg p-2 text-red-500 hover:bg-red-50"><Trash2 size={17} /></button></div>
@@ -144,10 +159,15 @@ export function AcudientesPage() {
       })}
     </div>}
     {open && <Modal title={editing ? 'Editar acudiente' : 'Nuevo acudiente'} onClose={() => setOpen(false)}>
-      <form onSubmit={save} onInvalid={showRequiredFieldMessage} className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
+      <form onSubmit={save} onInvalid={event => {
+        showRequiredFieldMessage(event)
+        const field = Array.from(event.currentTarget.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[required], select[required]')).find(candidate => candidate.validity.valueMissing)
+        if (field) setFormError(requiredFieldMessage(field))
+      }} className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
         <div className="md:col-span-2"><RequiredFieldsNotice /></div>
-        <SelectField label="Tipo de documento *" value={form.tipo_documento} required onChange={event => setForm({ ...form, tipo_documento: event.target.value })}>{documentTypes.map(documentType => <option key={documentType} value={documentType}>{documentType}</option>)}</SelectField>
-        <Field label="Número de documento *" value={form.numero_documento} disabled={Boolean(editing)} required onChange={event => setForm({ ...form, numero_documento: event.target.value })} />
+        {formError && <div className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">{formError}</div>}
+        <SelectField label="Tipo de documento" value={form.tipo_documento} onChange={event => setForm({ ...form, tipo_documento: event.target.value })}><option value="">Sin tipo de documento</option>{documentTypes.map(documentType => <option key={documentType} value={documentType}>{documentType}</option>)}</SelectField>
+        <Field label="Número de documento" value={form.numero_documento} disabled={Boolean(editing)} onChange={event => setForm({ ...form, numero_documento: event.target.value })} />
         <Field label="Primer nombre *" value={form.nombre_1} required onChange={event => setForm({ ...form, nombre_1: event.target.value })} />
         <Field label="Segundo nombre" value={form.nombre_2} onChange={event => setForm({ ...form, nombre_2: event.target.value })} />
         <Field label="Primer apellido *" value={form.apellido_1} required onChange={event => setForm({ ...form, apellido_1: event.target.value })} />

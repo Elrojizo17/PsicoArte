@@ -24,6 +24,7 @@ export interface Alumno {
   apellido_2?: string
   identificacion?: string | null
   tipo_sangre?: string
+  eps?: string
   numero_documento_acudiente?: string
   acudiente_detalle?: Acudiente
   fecha_nacimiento?: string | null
@@ -35,7 +36,7 @@ export interface Jornada {
   hora_inicio: string
   hora_final: string
   dia_semana: string
-  tipo_jornada: 'Desarrollo Cognitivo' | 'Musical'
+  tipo_jornada: 'Estimulación Temprana' | 'Iniciación Musical' | 'Ensamble Musical'
 }
 
 export interface Clase {

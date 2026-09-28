@@ -1,4 +1,5 @@
 from django.db.models.deletion import ProtectedError
+from django.db.models import Q
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
@@ -6,7 +7,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Alumno, AlumnoClase, Acudiente, ClaseProgramada, Jornada
+from .models import JORNADAS_MUSICALES, Alumno, AlumnoClase, Acudiente, ClaseProgramada, Jornada
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
 from .serializers import (
     AlumnoClaseSerializer,
@@ -87,21 +88,23 @@ class AlumnoViewSet(viewsets.ModelViewSet):
 
 
 class JornadaViewSet(viewsets.ModelViewSet):
-    queryset = Jornada.objects.all()
+    queryset = Jornada.objects.filter(
+        Q(
+            *[
+                Q(
+                    dia_semana=day,
+                    hora_inicio=start,
+                    hora_final=end,
+                    tipo_jornada=kind,
+                )
+                for day, start, end, kind in JORNADAS_MUSICALES
+            ],
+            _connector=Q.OR,
+        )
+    )
     serializer_class = JornadaSerializer
-
     permission_classes = [IsAuthenticated, EsPersonalEmpresa]
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        try:
-            self.perform_destroy(instance)
-        except ProtectedError:
-            return Response(
-                {'detail': 'No se puede eliminar una jornada con clases programadas.'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    http_method_names = ['get', 'head', 'options']
 
 
 class ClaseProgramadaViewSet(viewsets.ModelViewSet):

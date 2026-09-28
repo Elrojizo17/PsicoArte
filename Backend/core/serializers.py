@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from uuid import uuid4
 
 from .models import Alumno, AlumnoClase, Acudiente, ClaseProgramada, Jornada
 
@@ -33,6 +34,8 @@ class AcudienteSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True, required=False)
     password = serializers.CharField(write_only=True, required=False, trim_whitespace=False)
     usuario_username = serializers.SerializerMethodField()
+    numero_documento = serializers.CharField(required=False, allow_blank=True)
+    tipo_documento = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Acudiente
@@ -92,6 +95,7 @@ class AcudienteSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         username = validated_data.pop('username', None)
         password = validated_data.pop('password', None)
+        validated_data['numero_documento'] = validated_data.get('numero_documento') or f'ACU-{uuid4().hex[:12]}'
         acudiente = Acudiente.objects.create(**validated_data)
         if username and password:
             self._create_user(acudiente, username, password)
@@ -114,6 +118,7 @@ class AcudienteSerializer(serializers.ModelSerializer):
 
 
 class AlumnoSerializer(serializers.ModelSerializer):
+    ti = serializers.CharField(required=False, allow_blank=True)
     numero_documento_acudiente = serializers.PrimaryKeyRelatedField(
         source='acudiente',
         queryset=Acudiente.objects.all(),
@@ -132,6 +137,7 @@ class AlumnoSerializer(serializers.ModelSerializer):
             'apellido_2',
             'identificacion',
             'tipo_sangre',
+            'eps',
             'numero_documento_acudiente',
             'acudiente_detalle',
             'fecha_nacimiento',
@@ -141,6 +147,10 @@ class AlumnoSerializer(serializers.ModelSerializer):
     def get_clases(self, obj):
         clases = ClaseProgramada.objects.filter(inscripciones__alumno=obj)
         return ClaseSummarySerializer(clases, many=True).data
+
+    def create(self, validated_data):
+        validated_data['ti'] = validated_data.get('ti') or f'ALU-{uuid4().hex[:12]}'
+        return super().create(validated_data)
 
 
 class JornadaSerializer(serializers.ModelSerializer):
@@ -174,6 +184,29 @@ class ClaseProgramadaSerializer(serializers.ModelSerializer):
     def get_alumnos(self, obj):
         alumnos = Alumno.objects.filter(inscripciones__clase=obj)
         return AlumnoSummarySerializer(alumnos, many=True).data
+
+    def validate(self, attrs):
+        fecha = attrs.get('fecha', getattr(self.instance, 'fecha', None))
+        jornada = attrs.get('jornada', getattr(self.instance, 'jornada', None))
+        if fecha and jornada:
+            day_names = (
+                'Lunes',
+                'Martes',
+                'Miércoles',
+                'Jueves',
+                'Viernes',
+                'Sábado',
+                'Domingo',
+            )
+            expected_day = day_names[fecha.weekday()]
+            if jornada.dia_semana != expected_day:
+                raise serializers.ValidationError({
+                    'id_jornada': (
+                        f'La jornada seleccionada corresponde a {jornada.dia_semana}, '
+                        f'pero la fecha corresponde a {expected_day}.'
+                    )
+                })
+        return attrs
 
 
 class AlumnoClaseSerializer(serializers.ModelSerializer):

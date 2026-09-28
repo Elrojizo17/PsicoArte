@@ -1,7 +1,7 @@
 import type { FormEvent, InputHTMLAttributes, SelectHTMLAttributes } from 'react'
 
 export function RequiredFieldsNotice() {
-  return <p className="text-xs font-medium text-slate-500">Los campos marcados con * son obligatorios.</p>
+  return <p className="rounded-lg border border-primary-light/60 bg-background/60 px-3 py-2 text-xs font-medium text-slate-600">Los campos marcados con <strong>*</strong> son obligatorios.</p>
 }
 
 export function showRequiredFieldMessage(event: FormEvent<HTMLFormElement>) {
@@ -10,9 +10,14 @@ export function showRequiredFieldMessage(event: FormEvent<HTMLFormElement>) {
   if (!field) return
   fields.forEach(candidate => candidate.setCustomValidity(''))
   event.preventDefault()
-  const label = field.closest('label')?.textContent?.replace('*', '').trim() || 'obligatorio'
-  field.setCustomValidity(`Falta por llenar el campo «${label}».`)
+  const message = requiredFieldMessage(field)
+  field.setCustomValidity(message)
   field.reportValidity()
+}
+
+export function requiredFieldMessage(field: HTMLInputElement | HTMLSelectElement) {
+  const label = field.closest('label')?.textContent?.replace('*', '').trim() || 'obligatorio'
+  return `Falta por llenar el campo «${label}».`
 }
 
 const clearFieldMessage = (event: FormEvent<HTMLInputElement | HTMLSelectElement>) => {

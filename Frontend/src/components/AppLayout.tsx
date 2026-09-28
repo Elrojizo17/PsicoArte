@@ -1,10 +1,12 @@
-import { CalendarClock, CalendarDays, FileBadge, HeartHandshake, LogOut, UsersRound } from 'lucide-react'
+import { CalendarClock, CalendarDays, CreditCard, FileBadge, HeartHandshake, LogOut, MessageCircle, UsersRound } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 const baseNavigation = [
   { to: '/acudientes', label: 'Gestionar Acudientes', icon: HeartHandshake },
   { to: '/alumnos', label: 'Gestionar Alumnos', icon: UsersRound },
   { to: '/clases', label: 'Programar Clases', icon: CalendarDays },
+  { to: '/pagos', label: 'Pagos', icon: CreditCard },
+  { to: '/mensajeria', label: 'Mensajería', icon: MessageCircle },
 ]
 
 export function AppLayout() {

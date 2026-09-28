@@ -2,12 +2,15 @@ from django.db.models.deletion import ProtectedError
 from django.db.models import Q
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import JORNADAS_MUSICALES, Alumno, AlumnoClase, Acudiente, ClaseProgramada, Jornada
+from .models import JORNADAS_MUSICALES, Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Conversacion, Jornada, Mensaje, Pago
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
 from .serializers import (
     AlumnoClaseSerializer,
@@ -15,6 +18,10 @@ from .serializers import (
     AcudienteSerializer,
     ClaseProgramadaSerializer,
     JornadaSerializer,
+    PagoSerializer,
+    AsistenciaSerializer,
+    ConversacionSerializer,
+    MensajeSerializer,
 )
 
 
@@ -71,7 +78,7 @@ class AlumnoViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         permissions = [IsAuthenticated()]
-        if self.action in ('list', 'retrieve'):
+        if self.action in ('list', 'retrieve', 'update', 'partial_update'):
             permissions.append(EsPersonalEmpresaOAcudiente())
         else:
             permissions.append(EsPersonalEmpresa())
@@ -85,6 +92,104 @@ class AlumnoViewSet(viewsets.ModelViewSet):
         if hasattr(user, 'acudiente'):
             return queryset.filter(acudiente=user.acudiente)
         return queryset.none()
+
+
+class PagoViewSet(viewsets.ModelViewSet):
+    queryset = Pago.objects.select_related('alumno', 'alumno__acudiente').all()
+    serializer_class = PagoSerializer
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action in ('list', 'retrieve'):
+            permissions.append(EsPersonalEmpresaOAcudiente())
+        else:
+            permissions.append(EsPersonalEmpresa())
+        return permissions
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
+            return queryset
+        if hasattr(user, 'acudiente'):
+            return queryset.filter(alumno__acudiente=user.acudiente)
+        return queryset.none()
+
+
+class AsistenciaViewSet(viewsets.ModelViewSet):
+    queryset = Asistencia.objects.select_related('alumno', 'clase', 'clase__jornada').all()
+    serializer_class = AsistenciaSerializer
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action in ('list', 'retrieve'):
+            permissions.append(EsPersonalEmpresaOAcudiente())
+        else:
+            permissions.append(EsPersonalEmpresa())
+        return permissions
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
+            return queryset
+        if hasattr(user, 'acudiente'):
+            return queryset.filter(alumno__acudiente=user.acudiente)
+        return queryset.none()
+
+
+class ConversacionViewSet(viewsets.ModelViewSet):
+    queryset = Conversacion.objects.select_related('acudiente').prefetch_related('mensajes').all()
+    serializer_class = ConversacionSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
+            for guardian in Acudiente.objects.all():
+                Conversacion.objects.get_or_create(acudiente=guardian)
+            return queryset
+        if hasattr(user, 'acudiente'):
+            conversation, _ = Conversacion.objects.get_or_create(acudiente=user.acudiente)
+            return queryset.filter(pk=conversation.pk)
+        return queryset.none()
+
+    @action(detail=True, methods=['post'], url_path='marcar-leidos')
+    def mark_read(self, request, pk=None):
+        conversation = self.get_object()
+        messages = conversation.mensajes.all()
+        if hasattr(request.user, 'acudiente'):
+            messages.exclude(remitente=request.user).update(leido_por_acudiente=True)
+        else:
+            messages.exclude(remitente=request.user).update(leido_por_personal=True)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MensajeViewSet(viewsets.ModelViewSet):
+    queryset = Mensaje.objects.select_related('conversacion__acudiente', 'remitente').all()
+    serializer_class = MensajeSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        conversation_id = self.request.query_params.get('conversacion')
+        if conversation_id:
+            queryset = queryset.filter(conversacion_id=conversation_id)
+        user = self.request.user
+        if user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
+            return queryset
+        if hasattr(user, 'acudiente'):
+            return queryset.filter(conversacion__acudiente=user.acudiente)
+        return queryset.none()
+
+    def perform_create(self, serializer):
+        conversation = serializer.validated_data['conversacion']
+        if not self.get_queryset().filter(conversacion=conversation).exists() and not self.request.user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
+            raise PermissionDenied('No puedes escribir en esta conversación.')
+        message = serializer.save(remitente=self.request.user)
+        payload = MensajeSerializer(message, context={'request': self.request}).data
+        async_to_sync(get_channel_layer().group_send)(f'mensajeria_{conversation.id}', {'type': 'message_created', 'message': payload})
 
 
 class JornadaViewSet(viewsets.ModelViewSet):
@@ -111,7 +216,22 @@ class ClaseProgramadaViewSet(viewsets.ModelViewSet):
     queryset = ClaseProgramada.objects.select_related('jornada').prefetch_related('inscripciones__alumno').all()
     serializer_class = ClaseProgramadaSerializer
 
-    permission_classes = [IsAuthenticated, EsPersonalEmpresa]
+    def get_permissions(self):
+        permissions = [IsAuthenticated()]
+        if self.action in ('list', 'retrieve'):
+            permissions.append(EsPersonalEmpresaOAcudiente())
+        else:
+            permissions.append(EsPersonalEmpresa())
+        return permissions
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        if user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
+            return queryset
+        if hasattr(user, 'acudiente'):
+            return queryset.filter(inscripciones__alumno__acudiente=user.acudiente).distinct()
+        return queryset.none()
 
     @action(detail=True, methods=['get', 'post'], url_path='alumnos')
     def alumnos(self, request, pk=None):

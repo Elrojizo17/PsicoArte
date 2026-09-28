@@ -1,12 +1,12 @@
-import { CalendarClock, CalendarDays, CreditCard, FileBadge, HeartHandshake, LogOut, MessageCircle, UsersRound } from 'lucide-react'
+import { CalendarClock, CalendarDays, CreditCard, FileBadge, HeartHandshake, LogOut, UsersRound } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { MessageNotifications } from './MessageNotifications'
 
 const baseNavigation = [
   { to: '/acudientes', label: 'Gestionar Acudientes', icon: HeartHandshake },
   { to: '/alumnos', label: 'Gestionar Alumnos', icon: UsersRound },
   { to: '/clases', label: 'Programar Clases', icon: CalendarDays },
   { to: '/pagos', label: 'Pagos', icon: CreditCard },
-  { to: '/mensajeria', label: 'Mensajería', icon: MessageCircle },
 ]
 
 export function AppLayout() {
@@ -38,6 +38,7 @@ export function AppLayout() {
       </div>
       <nav className="mt-6 grid grid-cols-2 gap-3 lg:mt-12 lg:grid-cols-1 lg:gap-4">
         {navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} className={({ isActive }) => `group flex min-h-12 items-center justify-center gap-2 rounded-full px-3 py-3 text-center text-sm font-bold shadow-sm transition hover:-translate-y-0.5 hover:bg-primary-dark lg:justify-start lg:px-4 ${isActive ? 'bg-primary-dark text-white' : 'bg-primary text-white'}`}><Icon size={18} strokeWidth={2.4} /><span>{label}</span></NavLink>)}
+      <MessageNotifications to="/mensajeria" label={'Mensajer\u00eda'} />
       </nav>
       <button type="button" onClick={handleLogout} className="mt-4 hidden min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[#d8dfd5] bg-white px-4 py-3 text-sm font-bold text-[#526454] shadow-sm transition hover:bg-[#f3f6f0] lg:mt-8 lg:flex">
         <LogOut size={18} strokeWidth={2.4} />

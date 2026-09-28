@@ -1,12 +1,12 @@
-import { CalendarDays, ClipboardCheck, CreditCard, LogOut, MessageCircle, UserRound } from 'lucide-react'
+import { CalendarDays, ClipboardCheck, CreditCard, LogOut, UserRound } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { MessageNotifications } from './MessageNotifications'
 
 const navigation = [
   { to: '/perfil-padre', label: 'Mis niños', icon: UserRound, end: true },
   { to: '/perfil-padre/calendario', label: 'Calendario', icon: CalendarDays },
   { to: '/perfil-padre/asistencias', label: 'Asistencias', icon: ClipboardCheck },
   { to: '/perfil-padre/pagos', label: 'Mis pagos', icon: CreditCard },
-  { to: '/perfil-padre/mensajeria', label: 'Mensajes', icon: MessageCircle },
 ]
 
 export function ParentLayout() {
@@ -28,7 +28,8 @@ export function ParentLayout() {
         <button type="button" onClick={logout} className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d8dfd5] bg-white px-4 py-3 text-sm font-bold text-[#526454] shadow-sm hover:bg-[#f3f6f0] lg:hidden"><LogOut size={17}/><span>Salir</span></button>
       </div>
       <div className="mb-5 hidden lg:block"><p className="text-xs font-bold uppercase tracking-widest text-primary">Portal familiar</p><p className="mt-1 truncate font-bold text-primary-dark">{name}</p></div>
-      <nav className="grid grid-cols-2 gap-3 lg:mt-8 lg:grid-cols-1 lg:gap-3">{navigation.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `flex min-h-11 items-center justify-center gap-2 rounded-full px-3 py-3 text-center text-sm font-bold shadow-sm transition hover:bg-primary-dark lg:justify-start lg:px-4 ${isActive ? 'bg-primary-dark text-white' : 'bg-primary text-white'}`}><Icon size={18}/><span>{label}</span></NavLink>)}</nav>
+      <nav className="grid grid-cols-2 gap-3 lg:mt-8 lg:grid-cols-1 lg:gap-3">{navigation.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => `flex min-h-11 items-center justify-center gap-2 rounded-full px-3 py-3 text-center text-sm font-bold shadow-sm transition hover:bg-primary-dark lg:justify-start lg:px-4 ${isActive ? 'bg-primary-dark text-white' : 'bg-primary text-white'}`}><Icon size={18}/><span>{label}</span></NavLink>)}<MessageNotifications to="/perfil-padre/mensajeria" label="Mensajes" compact />
+      </nav>
       <button type="button" onClick={logout} className="mt-8 hidden min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[#d8dfd5] bg-white px-4 py-3 text-sm font-bold text-[#526454] shadow-sm hover:bg-[#f3f6f0] lg:flex"><LogOut size={17}/><span>Cerrar sesión</span></button>
     </aside>
     <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8"><Outlet /></main>

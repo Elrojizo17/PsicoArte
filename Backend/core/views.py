@@ -10,7 +10,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import JORNADAS_MUSICALES, Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Conversacion, Jornada, Mensaje, Pago
+from .models import JORNADAS_MUSICALES, Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Conversacion, Jornada, Mensaje, Pago, PlantillaMensaje
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
 from .serializers import (
     AlumnoClaseSerializer,
@@ -22,7 +22,32 @@ from .serializers import (
     AsistenciaSerializer,
     ConversacionSerializer,
     MensajeSerializer,
+    PlantillaMensajeSerializer,
 )
+
+
+class PlantillaMensajeListUpdateView(viewsets.ModelViewSet):
+    queryset = PlantillaMensaje.objects.all()
+    serializer_class = PlantillaMensajeSerializer
+    permission_classes = [IsAuthenticated, EsPersonalEmpresa]
+    lookup_field = 'tipo'
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, EsPersonalEmpresa])
+def aviso_pagos_view(request):
+    from .automation import crear_mensaje_automatico
+
+    plantilla = PlantillaMensaje.objects.get(tipo=PlantillaMensaje.AVISO_PAGO)
+    notified = set()
+    for alumno in Alumno.objects.select_related('acudiente').all():
+        if alumno.resumen_pagos()['estado_pago'] not in ('sin_pago', 'vencido') or alumno.acudiente_id in notified:
+            continue
+        nombre = ' '.join(filter(None, [alumno.nombre_1, alumno.nombre_2, alumno.apellido_1, alumno.apellido_2]))
+        crear_mensaje_automatico(alumno.acudiente, plantilla.texto.format(alumno=nombre, hora='', jornada=''))
+        notified.add(alumno.acudiente_id)
+    return Response({'enviados': len(notified)})
 
 
 @api_view(['POST'])

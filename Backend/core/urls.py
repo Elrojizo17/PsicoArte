@@ -11,6 +11,8 @@ from .views import (
     AsistenciaViewSet,
     ConversacionViewSet,
     MensajeViewSet,
+    PlantillaMensajeListUpdateView,
+    aviso_pagos_view,
 )
 
 from django.urls import path
@@ -25,5 +27,6 @@ router.register('pagos', PagoViewSet, basename='pago')
 router.register('asistencias', AsistenciaViewSet, basename='asistencia')
 router.register('mensajeria/conversaciones', ConversacionViewSet, basename='conversacion')
 router.register('mensajeria/mensajes', MensajeViewSet, basename='mensaje')
+router.register('automatizacion/plantillas', PlantillaMensajeListUpdateView, basename='plantilla-mensaje')
 
-urlpatterns = [path('login/', login_view, name='login')] + router.urls
+urlpatterns = [path('login/', login_view, name='login'), path('automatizacion/aviso-pagos/', aviso_pagos_view, name='aviso-pagos')] + router.urls

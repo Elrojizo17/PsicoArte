@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, CreditCard, FileBadge, HeartHandshake, LogOut, UsersRound } from 'lucide-react'
+import { CalendarClock, CalendarDays, CreditCard, FileBadge, HeartHandshake, LogOut, UsersRound, Settings2 } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
 
@@ -7,6 +7,7 @@ const baseNavigation = [
   { to: '/alumnos', label: 'Gestionar Alumnos', icon: UsersRound },
   { to: '/clases', label: 'Programar Clases', icon: CalendarDays },
   { to: '/pagos', label: 'Pagos', icon: CreditCard },
+  { to: '/automatizacion', label: 'Automatización de mensajes', icon: Settings2 },
 ]
 
 export function AppLayout() {
@@ -25,8 +26,8 @@ export function AppLayout() {
     navigate('/login', { replace: true })
   }
 
-  return <div className="min-h-screen bg-background text-ink lg:flex">
-    <aside className="w-full border-b border-border bg-white px-5 py-5 lg:min-h-screen lg:w-[275px] lg:shrink-0 lg:border-b-0 lg:border-r lg:px-6">
+  return <div className="min-h-screen bg-background text-ink lg:flex lg:h-screen lg:overflow-hidden">
+    <aside className="w-full border-b border-border bg-white px-5 py-5 lg:h-screen lg:w-[275px] lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-6">
       <div className="flex items-center justify-between lg:block">
         <div className="flex h-32 items-center lg:h-56">
           <img src="/logo.png" alt="PsicoArte" className="h-32 w-32 object-contain object-left lg:h-52 lg:w-52" />
@@ -45,6 +46,6 @@ export function AppLayout() {
         <span>Cerrar sesión</span>
       </button>
     </aside>
-    <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8"><Outlet /></main>
+    <main className="min-w-0 flex-1 p-4 sm:p-6 lg:h-screen lg:min-h-0 lg:overflow-hidden lg:p-8"><Outlet /></main>
   </div>
 }

@@ -2,7 +2,14 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from uuid import uuid4
 
-from .models import Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Conversacion, Jornada, Mensaje, Pago
+from .models import Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Conversacion, Jornada, Mensaje, Pago, PlantillaMensaje
+
+
+class PlantillaMensajeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlantillaMensaje
+        fields = ('tipo', 'texto', 'activo')
+        read_only_fields = ('tipo',)
 
 
 class AcudienteSummarySerializer(serializers.ModelSerializer):

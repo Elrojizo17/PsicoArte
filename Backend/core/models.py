@@ -269,6 +269,42 @@ class Mensaje(models.Model):
         return f'Mensaje {self.id} en conversación {self.conversacion_id}'
 
 
+class PlantillaMensaje(models.Model):
+    RECORDATORIO_CLASE = 'recordatorio_clase'
+    RECORDATORIO_RECOGIDA = 'recordatorio_recogida'
+    AVISO_PAGO = 'aviso_pago'
+    TIPOS = (
+        (RECORDATORIO_CLASE, 'Recordatorio de clase'),
+        (RECORDATORIO_RECOGIDA, 'Recordatorio de recogida'),
+        (AVISO_PAGO, 'Aviso de pago'),
+    )
+
+    tipo = models.CharField(max_length=30, choices=TIPOS, unique=True)
+    texto = models.TextField()
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'plantilla_mensaje'
+        ordering = ['tipo']
+
+    def __str__(self):
+        return self.get_tipo_display()
+
+
+class RecordatorioEnviado(models.Model):
+    INICIO = 'inicio'
+    RECOGIDA = 'recogida'
+    TIPOS = ((INICIO, 'Inicio'), (RECOGIDA, 'Recogida'))
+
+    clase = models.ForeignKey(ClaseProgramada, on_delete=models.CASCADE, related_name='recordatorios_enviados')
+    tipo = models.CharField(max_length=10, choices=TIPOS)
+    enviado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'recordatorio_enviado'
+        constraints = [models.UniqueConstraint(fields=['clase', 'tipo'], name='uq_recordatorio_clase_tipo')]
+
+
 class Pago(models.Model):
     id_pago = models.AutoField(primary_key=True)
     alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='pagos', db_column='ti_alumno')

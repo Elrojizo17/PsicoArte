@@ -13,6 +13,7 @@ import type { Alumno, Clase, Jornada } from '../types'
 
 const hours = Array.from({ length: 10 }, (_, i) => i + 9)
 const dateKey = (date: Date) => date.toISOString().slice(0, 10)
+const isSameLocalDay = (left: Date, right: Date) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate()
 const monday = (base: Date) => {
   const day = base.getDay() || 7
   const result = new Date(base)
@@ -87,6 +88,12 @@ export function ClasesPage() {
   const [error, setError] = useState('')
   const [week, setWeek] = useState(monday(new Date()))
   const [calendarView, setCalendarView] = useState<CalendarView>('week')
+  const [currentTime, setCurrentTime] = useState(() => new Date())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const availableJornadas = useMemo(
     () => form.fecha
       ? jornadas.filter((jornada) => jornada.dia_semana === dayNames[new Date(`${form.fecha}T00:00:00`).getDay()])
@@ -278,6 +285,9 @@ export function ClasesPage() {
     return Math.max(0, (Number(start || 9) - 9) * 64)
   }
 
+  const currentTimeOffset = (currentTime.getHours() - 9 + currentTime.getMinutes() / 60) * 64
+  const currentTimeLabel = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: false }).format(currentTime)
+
   const openDetails = (item: Clase) => {
     setSelectedClass(item)
   }
@@ -301,7 +311,8 @@ export function ClasesPage() {
       : `${displayDate.format(days[0])} - ${displayDate.format(days[days.length - 1])}`
 
   return (
-    <section className="page-enter">
+    <section className="page-enter lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden">
+      <div className="shrink-0">
       <PageHeader
         eyebrow="Agenda semanal"
         title="Programar Clases"
@@ -309,6 +320,7 @@ export function ClasesPage() {
         actionLabel="Nueva Clase"
         action={openNew}
       />
+      </div>
 
       {error && (
         <div className="mb-4">
@@ -316,7 +328,7 @@ export function ClasesPage() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary-light/60 bg-white/60 p-3">
+      <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary-light/60 bg-white/60 p-3">
         <div className="flex items-center gap-2">
           <button
             aria-label="Semana anterior"
@@ -340,6 +352,7 @@ export function ClasesPage() {
         <div className="flex flex-wrap items-center gap-2"><div className="flex rounded-full border border-primary-light bg-white p-1">{(['month', 'week', 'day'] as CalendarView[]).map(view => <button key={view} type="button" onClick={() => setCalendarView(view)} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${calendarView === view ? 'bg-primary-dark text-white' : 'text-primary-dark hover:bg-background'}`}>{view === 'month' ? 'Mes' : view === 'week' ? 'Semana' : 'Día'}</button>)}</div><button onClick={() => setWeek(monday(new Date()))} className="rounded-full border border-primary-light px-4 py-2 text-xs font-bold text-primary-dark hover:bg-background">Hoy</button></div>
       </div>
 
+      <div className="min-h-0 lg:flex-1 lg:overflow-auto lg:overscroll-contain">
       {loading ? (
         <LoadingState />
       ) : (
@@ -381,11 +394,20 @@ export function ClasesPage() {
                     <div key={hour} className="h-16 border-b border-primary-light/25" />
                   ))}
 
+                  {isSameLocalDay(day, currentTime)
+                    && currentTimeOffset >= 0
+                    && currentTimeOffset <= hours.length * 64
+                    && <div className="pointer-events-none absolute left-0 right-0 z-0 flex items-center" style={{ top: currentTimeOffset }}>
+                      <span className="absolute -left-[64px] w-[58px] pr-1 text-right text-[11px] font-bold tabular-nums text-[#075b2b]">{currentTimeLabel}</span>
+                      <span aria-hidden="true" className="relative z-10 h-0 w-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-[#075b2b]" />
+                      <span aria-hidden="true" className="h-[2px] flex-1 bg-[#075b2b]" />
+                    </div>}
+
                   {classesFor(dateKey(day)).map((item) => (
                     <div
                       key={item.id_clase}
                       style={{ top: getOffset(item) + 4 }}
-                      className="group absolute left-1 right-1 min-h-14 cursor-pointer rounded-lg border-l-4 border-primary-dark bg-primary/15 p-2 text-left shadow-sm transition hover:bg-primary/25"
+                      className="class-calendar-event group absolute left-1 right-1 z-30 min-h-14 cursor-pointer rounded-lg border-l-4 border-primary-dark p-2 text-left shadow-sm transition"
                       role="button"
                       tabIndex={0}
                       aria-label={`Ver información de la clase del ${formatDate(item.fecha)}`}
@@ -439,6 +461,7 @@ export function ClasesPage() {
           </div>
         </div>
       )}
+      </div>
 
       {selectedClass && (
         <Modal

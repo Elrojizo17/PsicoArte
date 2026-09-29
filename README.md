@@ -172,6 +172,14 @@ Si la base de datos ya tenía las tablas iniciales creadas antes de instalar el 
 
 Abre dos terminales.
 
+Al iniciar Django con `python manage.py runserver`, los recordatorios automáticos empiezan en un hilo de fondo y se revisan cada minuto. No necesitas otra terminal ni servicios o paquetes adicionales. También puedes ejecutar el proceso por separado con:
+
+```powershell
+python manage.py revisar_recordatorios
+```
+
+El proceso solo está activo mientras `runserver` (o el comando separado) siga ejecutándose.
+
 ### Terminal 1: API de Django
 
 ```powershell

@@ -19,3 +19,5 @@ h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; }
 .student-table .p-checkbox.p-highlight .p-checkbox-box .p-checkbox-icon { color: #ffffff; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .page-enter { animation: rise .35s ease-out both; }
+.class-calendar-event { background-color: #e1f3e3; }
+.class-calendar-event:hover { background-color: #d4edd7; }

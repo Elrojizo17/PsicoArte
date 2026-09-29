@@ -30,4 +30,6 @@ export const endpoints = {
   asistencias: '/asistencias/',
   conversaciones: '/mensajeria/conversaciones/',
   mensajes: '/mensajeria/mensajes/',
+  plantillas: '/automatizacion/plantillas/',
+  avisoPagos: '/automatizacion/aviso-pagos/',
 }

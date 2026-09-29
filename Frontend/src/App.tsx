@@ -11,6 +11,7 @@ import { AgendaCitasPage } from './pages/AgendaCitasPage'
 import { CertificadosPage } from './pages/CertificadosPage'
 import { PagosPage } from './pages/PagosPage'
 import { MensajeriaPage } from './pages/MensajeriaPage'
+import { AutomatizacionPage } from './pages/AutomatizacionPage'
 
 function ProtectedRoute() {
   const location = useLocation()
@@ -38,6 +39,7 @@ function App() {
         <Route path="/clases" element={<ClasesPage />} />
         <Route path="/pagos" element={<PagosPage />} />
         <Route path="/mensajeria" element={<MensajeriaPage />} />
+        <Route path="/automatizacion" element={<AutomatizacionPage />} />
         <Route path="/agenda-citas" element={<AgendaCitasPage />} />
         <Route path="/certificados" element={<CertificadosPage />} />
       </Route>

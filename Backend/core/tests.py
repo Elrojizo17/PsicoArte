@@ -4,7 +4,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Alumno, Acudiente, ClaseProgramada, Jornada
+from .models import Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Jornada, Pago
 
 
 class ApiCrudTests(APITestCase):
@@ -97,3 +97,26 @@ class ApiCrudTests(APITestCase):
             reverse('jornada-detail', kwargs={'pk': self.jornada.pk}),
         )
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
+    def test_presente_y_ausente_consumen_pospuesta_no(self):
+        second_class = ClaseProgramada.objects.create(jornada=self.jornada, fecha=date(2026, 9, 24))
+        postponed_class = ClaseProgramada.objects.create(jornada=self.jornada, fecha=date(2026, 9, 25))
+        for class_instance in (self.clase, second_class, postponed_class):
+            AlumnoClase.objects.create(alumno=self.alumno, clase=class_instance)
+
+        Asistencia.objects.create(alumno=self.alumno, clase=self.clase, estado=Asistencia.PRESENTE)
+        Asistencia.objects.create(alumno=self.alumno, clase=second_class, estado=Asistencia.AUSENTE)
+        Asistencia.objects.create(alumno=self.alumno, clase=postponed_class, estado=Asistencia.POSPUESTA)
+        payment = Pago.objects.create(
+            alumno=self.alumno,
+            fecha_pago=date(2026, 9, 1),
+            clases_pagadas=3,
+            valor_pagado='150000.00',
+        )
+
+        detail = self.alumno.detalle_pagos(as_of=date(2026, 9, 30))[0]
+
+        self.assertEqual(detail['pago'], payment)
+        self.assertEqual(len(detail['clases_consumidas']), 2)
+        self.assertEqual(detail['clases_disponibles'], 1)
+        self.assertEqual(detail['clases_cubiertas'], [date(2026, 9, 23), date(2026, 9, 24)])

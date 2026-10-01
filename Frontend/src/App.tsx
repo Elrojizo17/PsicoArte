@@ -12,6 +12,7 @@ import { CertificadosPage } from './pages/CertificadosPage'
 import { PagosPage } from './pages/PagosPage'
 import { MensajeriaPage } from './pages/MensajeriaPage'
 import { AutomatizacionPage } from './pages/AutomatizacionPage'
+import { PlantillasClasesPage } from './pages/PlantillasClasesPage'
 
 function ProtectedRoute() {
   const location = useLocation()
@@ -37,6 +38,7 @@ function App() {
         <Route path="/acudientes" element={<AcudientesPage />} />
         <Route path="/alumnos" element={<AlumnosPage />} />
         <Route path="/clases" element={<ClasesPage />} />
+        <Route path="/plantillas-clases" element={<PlantillasClasesPage />} />
         <Route path="/pagos" element={<PagosPage />} />
         <Route path="/mensajeria" element={<MensajeriaPage />} />
         <Route path="/automatizacion" element={<AutomatizacionPage />} />

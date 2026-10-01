@@ -1,0 +1,20 @@
+{
+  "name": "PsicoArte",
+  "short_name": "PsicoArte",
+  "description": "Gestión de clases y asistencias de PsicoArte.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f5f7f6",
+  "theme_color": "#0a7b42",
+  "orientation": "portrait",
+  "lang": "es-CO",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "1280x1280",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

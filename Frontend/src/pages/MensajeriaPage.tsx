@@ -45,7 +45,6 @@ export function MensajeriaPage() {
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
-  const [incomingNotice, setIncomingNotice] = useState('')
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const socketRef = useRef<WebSocket | null>(null)
@@ -74,10 +73,6 @@ export function MensajeriaPage() {
     socket.onmessage = event => {
       const message = JSON.parse(event.data) as Mensaje
       setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
-      if (!message.es_propio) {
-        setIncomingNotice(`Nuevo mensaje de ${message.remitente_nombre}`)
-        window.setTimeout(() => setIncomingNotice(''), 4000)
-      }
       setConversations(current => current.map(item => item.id === selected.id ? { ...item, no_leidos: 0, ultimo_mensaje: message } : item))
     }
     socketRef.current = socket

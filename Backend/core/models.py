@@ -78,12 +78,18 @@ class Alumno(models.Model):
         remaining = {payment.id_pago: payment.clases_pagadas for payment in payment_list}
         allocations = {payment.id_pago: [] for payment in payment_list}
         first_payment = payment_list[0] if payment_list else None
+        attendance_states = dict(self.asistencias.values_list('clase_id', 'estado'))
         enrolled_classes = self.inscripciones.select_related('clase').order_by('clase__fecha', 'clase__id_clase')
         if first_payment:
             enrolled_classes = enrolled_classes.filter(clase__fecha__gte=first_payment.fecha_pago)
 
         for enrollment in enrolled_classes:
             class_date = enrollment.clase.fecha
+            if class_date > as_of or attendance_states.get(enrollment.clase_id) not in (
+                Asistencia.PRESENTE,
+                Asistencia.AUSENTE,
+            ):
+                continue
             for payment in payment_list:
                 if payment.fecha_pago <= class_date and remaining[payment.id_pago] > 0:
                     allocations[payment.id_pago].append(class_date)
@@ -174,6 +180,13 @@ class ClaseProgramada(models.Model):
         related_name='clases',
     )
     fecha = models.DateField()
+    plantilla = models.ForeignKey(
+        'PlantillaClase',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clases_generadas',
+    )
 
     class Meta:
         db_table = 'clase_programada'
@@ -181,6 +194,82 @@ class ClaseProgramada(models.Model):
 
     def __str__(self):
         return f'Clase {self.id_clase} - {self.fecha}'
+
+
+class PlantillaClase(models.Model):
+    id_plantilla = models.AutoField(primary_key=True)
+    jornada = models.ForeignKey(
+        Jornada,
+        on_delete=models.PROTECT,
+        db_column='id_jornada',
+        related_name='plantillas',
+    )
+    nombre = models.CharField(max_length=120, blank=True)
+    descripcion = models.CharField(max_length=255, blank=True)
+    fecha_inicio = models.DateField()
+    fecha_fin = models.DateField(null=True, blank=True)
+    activo = models.BooleanField(default=True)
+    es_recurrente = models.BooleanField(default=True)
+    frecuencia = models.CharField(max_length=20, default='semanal', choices=(
+        ('semanal', 'Semanal'),
+        ('quincenal', 'Quincenal'),
+    ))
+
+    class Meta:
+        db_table = 'plantilla_clase'
+        ordering = ['fecha_inicio', 'id_plantilla']
+
+    def __str__(self):
+        return self.nombre or f'Plantilla {self.id_plantilla}'
+
+    def obtener_alumnos_para_fecha(self, fecha):
+        alumnos = set(
+            PlantillaClaseAlumno.objects.filter(plantilla=self).values_list('alumno_id', flat=True)
+        )
+        for excepcion in ExcepcionClase.objects.filter(plantilla=self, fecha=fecha):
+            if excepcion.accion == ExcepcionClase.AGREGAR:
+                alumnos.add(excepcion.alumno_id)
+            elif excepcion.accion == ExcepcionClase.QUITAR:
+                alumnos.discard(excepcion.alumno_id)
+        return Alumno.objects.filter(ti__in=alumnos).order_by('apellido_1', 'nombre_1')
+
+
+class PlantillaClaseAlumno(models.Model):
+    plantilla = models.ForeignKey(PlantillaClase, on_delete=models.CASCADE, related_name='alumnos')
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='plantillas_clase')
+
+    class Meta:
+        db_table = 'plantilla_clase_alumno'
+        constraints = [
+            models.UniqueConstraint(fields=['plantilla', 'alumno'], name='uq_plantilla_alumno_alumno'),
+        ]
+
+    def __str__(self):
+        return f'{self.plantilla_id} - {self.alumno_id}'
+
+
+class ExcepcionClase(models.Model):
+    AGREGAR = 'agregar'
+    QUITAR = 'quitar'
+    ACCIONES = (
+        (AGREGAR, 'Agregar estudiante'),
+        (QUITAR, 'Quitar estudiante'),
+    )
+
+    plantilla = models.ForeignKey(PlantillaClase, on_delete=models.CASCADE, related_name='excepciones')
+    fecha = models.DateField()
+    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='excepciones_clase')
+    accion = models.CharField(max_length=20, choices=ACCIONES, default=AGREGAR)
+    observacion = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'excepcion_clase'
+        constraints = [
+            models.UniqueConstraint(fields=['plantilla', 'fecha', 'alumno'], name='uq_excepcion_plantilla_fecha_alumno'),
+        ]
+
+    def __str__(self):
+        return f'{self.plantilla_id} - {self.fecha} - {self.alumno_id} ({self.accion})'
 
 
 class AlumnoClase(models.Model):
@@ -215,10 +304,12 @@ class Asistencia(models.Model):
     PROGRAMADA = 'programada'
     PRESENTE = 'presente'
     AUSENTE = 'ausente'
+    POSPUESTA = 'pospuesta'
     ESTADOS = (
         (PROGRAMADA, 'Programada'),
         (PRESENTE, 'Presente'),
         (AUSENTE, 'Ausente'),
+        (POSPUESTA, 'Pospuesta'),
     )
 
     id_asistencia = models.AutoField(primary_key=True)

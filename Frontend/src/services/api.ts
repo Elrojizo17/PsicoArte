@@ -26,6 +26,7 @@ export const endpoints = {
   alumnos: '/alumnos/',
   jornadas: '/jornadas/',
   clases: '/clases/',
+  plantillasClases: '/plantillas-clase/',
   pagos: '/pagos/',
   asistencias: '/asistencias/',
   conversaciones: '/mensajeria/conversaciones/',

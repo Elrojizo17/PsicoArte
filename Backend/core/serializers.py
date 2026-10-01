@@ -1,5 +1,7 @@
 from django.contrib.auth.models import User
+from pathlib import PurePosixPath
 from rest_framework import serializers
+from rest_framework.reverse import reverse
 from uuid import uuid4
 
 from .models import (
@@ -352,6 +354,20 @@ class PlantillaClaseSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class GenerarClasesSerializer(serializers.Serializer):
+    fecha_inicio = serializers.DateField(required=False)
+    fecha_fin = serializers.DateField(required=False)
+
+    def validate(self, attrs):
+        fecha_inicio = attrs.get('fecha_inicio')
+        fecha_fin = attrs.get('fecha_fin')
+        if fecha_inicio and fecha_fin and fecha_fin < fecha_inicio:
+            raise serializers.ValidationError({
+                'fecha_fin': 'La fecha final no puede ser anterior a la inicial.'
+            })
+        return attrs
+
+
 class AlumnoClaseSerializer(serializers.ModelSerializer):
     ti = serializers.PrimaryKeyRelatedField(source='alumno', queryset=Alumno.objects.all())
     id_clase = serializers.PrimaryKeyRelatedField(source='clase', queryset=ClaseProgramada.objects.all())
@@ -393,10 +409,12 @@ class MensajeSerializer(serializers.ModelSerializer):
     remitente_id = serializers.IntegerField(read_only=True)
     es_propio = serializers.SerializerMethodField()
     archivo_url = serializers.SerializerMethodField()
+    archivo = serializers.SerializerMethodField()
+    archivo_upload = serializers.FileField(source='archivo', write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = Mensaje
-        fields = ('id', 'conversacion', 'remitente_id', 'remitente_nombre', 'es_propio', 'cuerpo', 'archivo', 'archivo_url', 'creado_en', 'automatico', 'leido_por_acudiente', 'leido_por_personal')
+        fields = ('id', 'conversacion', 'remitente_id', 'remitente_nombre', 'es_propio', 'cuerpo', 'archivo', 'archivo_url', 'archivo_upload', 'creado_en', 'automatico', 'leido_por_acudiente', 'leido_por_personal')
         read_only_fields = ('id', 'remitente_nombre', 'archivo_url', 'creado_en', 'automatico', 'leido_por_acudiente', 'leido_por_personal')
 
     def get_remitente_nombre(self, obj):
@@ -412,7 +430,11 @@ class MensajeSerializer(serializers.ModelSerializer):
         if not obj.archivo:
             return None
         request = self.context.get('request')
-        return request.build_absolute_uri(obj.archivo.url) if request else obj.archivo.url
+        path = reverse('mensaje-archivo', kwargs={'pk': obj.pk}, request=request)
+        return path
+
+    def get_archivo(self, obj):
+        return PurePosixPath(obj.archivo.name).name if obj.archivo else None
 
     def validate(self, attrs):
         if not attrs.get('cuerpo') and not attrs.get('archivo'):

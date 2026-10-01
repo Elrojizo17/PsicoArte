@@ -276,13 +276,13 @@ class AlumnoClase(models.Model):
     pk = models.CompositePrimaryKey('alumno', 'clase')
     alumno = models.ForeignKey(
         Alumno,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         db_column='ti',
         related_name='inscripciones',
     )
     clase = models.ForeignKey(
         ClaseProgramada,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         db_column='id_clase',
         related_name='inscripciones',
     )
@@ -313,8 +313,8 @@ class Asistencia(models.Model):
     )
 
     id_asistencia = models.AutoField(primary_key=True)
-    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='asistencias')
-    clase = models.ForeignKey(ClaseProgramada, on_delete=models.CASCADE, related_name='asistencias')
+    alumno = models.ForeignKey(Alumno, on_delete=models.PROTECT, related_name='asistencias')
+    clase = models.ForeignKey(ClaseProgramada, on_delete=models.PROTECT, related_name='asistencias')
     estado = models.CharField(max_length=20, choices=ESTADOS, default=PROGRAMADA)
     observacion = models.CharField(max_length=255, blank=True)
 
@@ -398,7 +398,7 @@ class RecordatorioEnviado(models.Model):
 
 class Pago(models.Model):
     id_pago = models.AutoField(primary_key=True)
-    alumno = models.ForeignKey(Alumno, on_delete=models.CASCADE, related_name='pagos', db_column='ti_alumno')
+    alumno = models.ForeignKey(Alumno, on_delete=models.PROTECT, related_name='pagos', db_column='ti_alumno')
     fecha_pago = models.DateField()
     clases_pagadas = models.PositiveIntegerField()
     valor_pagado = models.DecimalField(max_digits=12, decimal_places=2)

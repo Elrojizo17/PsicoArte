@@ -1,4 +1,4 @@
-const CACHE_NAME = 'psicoarte-shell-v1'
+const CACHE_NAME = 'psicoarte-shell-v3'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/logo.png']
 
 self.addEventListener('install', (event) => {
@@ -20,6 +20,8 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url)
   if (url.origin !== self.location.origin) return
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return
+  if (event.request.headers.has('Authorization')) return
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

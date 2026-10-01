@@ -12,22 +12,47 @@ const formatDay = (value: string) => new Intl.DateTimeFormat('es-CO', { day: '2-
 type PendingMessage = { localId: number; conversationId: number; cuerpo: string; archivo: File | null; status: 'sending' | 'failed' }
 
 function AttachmentPreview({ url, name, own }: { url: string; name: string; own: boolean }) {
-  const filename = decodeURIComponent(name.split(/[\\/]/).pop() || name)
+  const [protectedUrl, setProtectedUrl] = useState('')
+  const [loadFailed, setLoadFailed] = useState(false)
+  const filename = name.split(/[\\/]/).pop() || name
   const extension = filename.split('.').pop()?.toLocaleLowerCase() || ''
   const image = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(extension)
   const pdf = extension === 'pdf'
 
-  if (image) return <a href={url} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-lg" aria-label={`Abrir imagen ${filename}`}>
-    <img src={url} alt={filename} loading="lazy" className="max-h-72 w-full rounded-lg object-contain" />
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    setProtectedUrl('')
+    setLoadFailed(false)
+    api.get<Blob>(url, { responseType: 'blob' }).then(({ data }) => {
+      const createdUrl = URL.createObjectURL(data)
+      if (!active) {
+        URL.revokeObjectURL(createdUrl)
+        return
+      }
+      objectUrl = createdUrl
+      setProtectedUrl(createdUrl)
+    }).catch(() => { if (active) setLoadFailed(true) })
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [url])
+
+  if (loadFailed) return <p className="mt-2 text-xs text-red-600">No se pudo cargar el archivo adjunto.</p>
+  if (!protectedUrl) return <p className="mt-2 text-xs opacity-70">Cargando archivo adjunto…</p>
+
+  if (image) return <a href={protectedUrl} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-lg" aria-label={`Abrir imagen ${filename}`}>
+    <img src={protectedUrl} alt={filename} loading="lazy" className="max-h-72 w-full rounded-lg object-contain" />
     <span className={`mt-1 block truncate text-xs ${own ? 'text-white/75' : 'text-slate-500'}`}>{filename}</span>
   </a>
 
   if (pdf) return <div className="mt-2 w-full overflow-hidden rounded-lg border border-border/60 bg-white">
-    <iframe src={url} title={`Vista previa: ${filename}`} className="h-72 w-full" />
-    <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary-dark hover:underline"><FileText size={15}/><span className="min-w-0 flex-1 truncate">{filename}</span><Download size={15}/><span>Abrir</span></a>
+    <iframe src={protectedUrl} title={`Vista previa: ${filename}`} className="h-72 w-full" />
+    <a href={protectedUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary-dark hover:underline"><FileText size={15}/><span className="min-w-0 flex-1 truncate">{filename}</span><Download size={15}/><span>Abrir</span></a>
   </div>
 
-  return <a href={url} target="_blank" rel="noreferrer" className={`mt-2 flex items-center gap-3 rounded-lg border px-3 py-3 ${own ? 'border-white/20 bg-white/10 text-white' : 'border-border bg-background text-ink'}`}>
+  return <a href={protectedUrl} download={filename} className={`mt-2 flex items-center gap-3 rounded-lg border px-3 py-3 ${own ? 'border-white/20 bg-white/10 text-white' : 'border-border bg-background text-ink'}`}>
     <FileText size={22} className="shrink-0 text-primary"/>
     <span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold">{filename}</span><span className="text-[10px] opacity-70">{extension ? `${extension.toUpperCase()} · Archivo adjunto` : 'Archivo adjunto'}</span></span>
     <Download size={16}/>
@@ -112,7 +137,7 @@ export function MensajeriaPage() {
     const formData = new FormData()
     formData.append('conversacion', String(pending.conversationId))
     if (pending.cuerpo) formData.append('cuerpo', pending.cuerpo)
-    if (pending.archivo) formData.append('archivo', pending.archivo)
+    if (pending.archivo) formData.append('archivo_upload', pending.archivo)
     try {
       await api.post(endpoints.mensajes, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       setPendingMessages(current => current.filter(item => item.localId !== pending.localId))

@@ -1,5 +1,9 @@
-from datetime import date, timedelta
+from datetime import timedelta
+import mimetypes
+from pathlib import Path
 
+from django.http import FileResponse
+from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.db.models import Q
 from django.contrib.auth import authenticate
@@ -8,8 +12,9 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.response import Response
 
 from .models import (
@@ -35,6 +40,7 @@ from .serializers import (
     AcudienteSerializer,
     ClaseProgramadaSerializer,
     ExcepcionClaseSerializer,
+    GenerarClasesSerializer,
     JornadaSerializer,
     PagoSerializer,
     AsistenciaSerializer,
@@ -72,6 +78,7 @@ def aviso_pagos_view(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AnonRateThrottle])
 def login_view(request):
     user = authenticate(
         request, username=request.data.get('username'), password=request.data.get('password')
@@ -137,6 +144,17 @@ class AlumnoViewSet(viewsets.ModelViewSet):
         if hasattr(user, 'acudiente'):
             return queryset.filter(acudiente=user.acudiente)
         return queryset.none()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError:
+            return Response(
+                {'detail': 'No se puede eliminar el alumno porque tiene inscripciones, asistencias o pagos asociados.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PagoViewSet(viewsets.ModelViewSet):
@@ -228,6 +246,26 @@ class MensajeViewSet(viewsets.ModelViewSet):
             return queryset.filter(conversacion__acudiente=user.acudiente)
         return queryset.none()
 
+    @action(detail=True, methods=['get'], url_path='archivo', url_name='archivo')
+    def descargar_archivo(self, request, pk=None):
+        message = self.get_object()
+        if not message.archivo:
+            return Response({'detail': 'El mensaje no tiene un archivo adjunto.'}, status=status.HTTP_404_NOT_FOUND)
+
+        filename = Path(message.archivo.name).name
+        content_type, _ = mimetypes.guess_type(filename)
+        safe_preview_types = {'application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'}
+        can_preview = content_type in safe_preview_types
+        response = FileResponse(
+            message.archivo.open('rb'),
+            as_attachment=not can_preview,
+            filename=filename,
+            content_type=content_type if can_preview else 'application/octet-stream',
+        )
+        response['X-Content-Type-Options'] = 'nosniff'
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
     def perform_create(self, serializer):
         conversation = serializer.validated_data['conversacion']
         if not self.get_queryset().filter(conversacion=conversation).exists() and not self.request.user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
@@ -277,6 +315,17 @@ class ClaseProgramadaViewSet(viewsets.ModelViewSet):
         if hasattr(user, 'acudiente'):
             return queryset.filter(inscripciones__alumno__acudiente=user.acudiente).distinct()
         return queryset.none()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError:
+            return Response(
+                {'detail': 'No se puede eliminar la clase porque conserva inscripciones o asistencias.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get', 'post'], url_path='alumnos')
     def alumnos(self, request, pk=None):
@@ -341,36 +390,74 @@ class PlantillaClaseViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='generar')
     def generar_clases(self, request, pk=None):
         plantilla = self.get_object()
-        fecha_inicio = request.data.get('fecha_inicio') or plantilla.fecha_inicio.isoformat()
-        fecha_fin = request.data.get('fecha_fin') or (plantilla.fecha_fin.isoformat() if plantilla.fecha_fin else fecha_inicio)
-        start = date.fromisoformat(fecha_inicio)
-        end = date.fromisoformat(fecha_fin)
+        if not plantilla.activo:
+            return Response(
+                {'detail': 'No se pueden generar clases desde una plantilla inactiva.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        range_serializer = GenerarClasesSerializer(data=request.data)
+        range_serializer.is_valid(raise_exception=True)
+        requested_start = range_serializer.validated_data.get('fecha_inicio', plantilla.fecha_inicio)
+        requested_end = range_serializer.validated_data.get(
+            'fecha_fin', plantilla.fecha_fin or requested_start
+        )
+        start = max(requested_start, plantilla.fecha_inicio)
+        end = min(requested_end, plantilla.fecha_fin) if plantilla.fecha_fin else requested_end
         if end < start:
-            return Response({'detail': 'La fecha final no puede ser anterior a la inicial.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': 'El rango no contiene fechas dentro del periodo de la plantilla.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if (end - start).days > 5 * 366:
+            return Response(
+                {'detail': 'El rango de generación no puede superar cinco años.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        base_students = set(
+            PlantillaClaseAlumno.objects.filter(plantilla=plantilla).values_list('alumno_id', flat=True)
+        )
+        exceptions_by_date = {}
+        exceptions = ExcepcionClase.objects.filter(
+            plantilla=plantilla, fecha__gte=start, fecha__lte=end
+        ).values_list('fecha', 'alumno_id', 'accion')
+        for exception_date, student_id, exception_action in exceptions:
+            exceptions_by_date.setdefault(exception_date, []).append((student_id, exception_action))
+
+        if plantilla.es_recurrente:
+            days_to_schedule = (plantilla.fecha_inicio.weekday() - start.weekday()) % 7
+            current = start + timedelta(days=days_to_schedule)
+            scheduled_dates = []
+            while current <= end:
+                days_from_anchor = (current - plantilla.fecha_inicio).days
+                if plantilla.frecuencia == 'semanal' or days_from_anchor % 14 == 0:
+                    scheduled_dates.append(current)
+                current += timedelta(days=7)
+        else:
+            scheduled_dates = [plantilla.fecha_inicio] if start <= plantilla.fecha_inicio <= end else []
 
         created = []
-        current = start
-        day_names = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-        while current <= end:
-            is_matching_day = plantilla.jornada.dia_semana == day_names[current.weekday()]
-            is_matching_frequency = plantilla.frecuencia == 'semanal' or (current - start).days % 14 == 0
-            if is_matching_day and is_matching_frequency:
+        with transaction.atomic():
+            PlantillaClase.objects.select_for_update().get(pk=plantilla.pk)
+            for current in scheduled_dates:
                 clase, created_flag = ClaseProgramada.objects.get_or_create(
                     plantilla=plantilla,
                     fecha=current,
                     defaults={'jornada': plantilla.jornada},
                 )
-                if created_flag:
-                    created.append(clase.id_clase)
-                    alumnos_base = set(PlantillaClaseAlumno.objects.filter(plantilla=plantilla).values_list('alumno_id', flat=True))
-                    for excepcion in ExcepcionClase.objects.filter(plantilla=plantilla, fecha=current):
-                        if excepcion.accion == ExcepcionClase.AGREGAR:
-                            alumnos_base.add(excepcion.alumno_id)
-                        elif excepcion.accion == ExcepcionClase.QUITAR:
-                            alumnos_base.discard(excepcion.alumno_id)
-                    for alumno_id in sorted(alumnos_base):
-                        AlumnoClase.objects.get_or_create(alumno_id=alumno_id, clase=clase)
-            current = current + timedelta(days=1)
+                if not created_flag:
+                    continue
+
+                created.append(clase.id_clase)
+                students_for_date = set(base_students)
+                for student_id, exception_action in exceptions_by_date.get(current, []):
+                    if exception_action == ExcepcionClase.AGREGAR:
+                        students_for_date.add(student_id)
+                    elif exception_action == ExcepcionClase.QUITAR:
+                        students_for_date.discard(student_id)
+                for alumno_id in sorted(students_for_date):
+                    AlumnoClase.objects.get_or_create(alumno_id=alumno_id, clase=clase)
 
         return Response({'generadas': created, 'cantidad': len(created)})
 

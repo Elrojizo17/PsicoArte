@@ -14,6 +14,7 @@ type TemplateForm = {
   id_jornada: string
   fecha_inicio: string
   fecha_fin: string
+  es_recurrente: boolean
   frecuencia: 'semanal' | 'quincenal'
   activo: boolean
 }
@@ -27,6 +28,7 @@ const emptyForm = (): TemplateForm => ({
   id_jornada: '',
   fecha_inicio: dateKey(new Date()),
   fecha_fin: '',
+  es_recurrente: true,
   frecuencia: 'semanal',
   activo: true,
 })
@@ -67,14 +69,17 @@ function TemplateFormModal({
         <option value="">{dayName ? `Jornada del ${dayName}` : 'Selecciona primero una fecha'}</option>
         {availableJornadas.map((item) => <option key={item.id_jornada} value={item.id_jornada}>{item.tipo_jornada} · {item.hora_inicio.slice(0, 5)} - {item.hora_final.slice(0, 5)}</option>)}
       </SelectField>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-primary-light/70 px-3 py-3 text-sm font-semibold text-slate-700">
+        <input type="checkbox" checked={form.es_recurrente} onChange={(event) => onChange({ ...form, es_recurrente: event.target.checked })} /> Clase recurrente
+      </label>
+      {form.es_recurrente && <div className="grid gap-2 sm:grid-cols-2">
         <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-primary-light/70 bg-background/40 px-3 py-3 text-sm font-semibold text-slate-700">
           <input type="radio" name="frecuencia" checked={form.frecuencia === 'semanal'} onChange={() => onChange({ ...form, frecuencia: 'semanal' })} /> Semanal
         </label>
         <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-primary-light/70 bg-background/40 px-3 py-3 text-sm font-semibold text-slate-700">
           <input type="radio" name="frecuencia" checked={form.frecuencia === 'quincenal'} onChange={() => onChange({ ...form, frecuencia: 'quincenal' })} /> Quincenal
         </label>
-      </div>
+      </div>}
       <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-primary-light/70 px-3 py-3 text-sm font-semibold text-slate-700">
         <input type="checkbox" checked={form.activo} onChange={(event) => onChange({ ...form, activo: event.target.checked })} /> Plantilla activa
       </label>
@@ -212,7 +217,7 @@ export function PlantillasClasesPage() {
   useEffect(() => { void load() }, [])
 
   const openNew = () => { setEditing(null); setForm(emptyForm()); setOpen(true) }
-  const openEdit = (item: PlantillaClase) => { setEditing(item.id_plantilla); setForm({ nombre: item.nombre, descripcion: item.descripcion || '', id_jornada: String(item.jornada_detalle?.id_jornada || ''), fecha_inicio: item.fecha_inicio, fecha_fin: item.fecha_fin || '', frecuencia: item.frecuencia, activo: item.activo }); setOpen(true) }
+  const openEdit = (item: PlantillaClase) => { setEditing(item.id_plantilla); setForm({ nombre: item.nombre, descripcion: item.descripcion || '', id_jornada: String(item.jornada_detalle?.id_jornada || ''), fecha_inicio: item.fecha_inicio, fecha_fin: item.fecha_fin || '', es_recurrente: item.es_recurrente, frecuencia: item.frecuencia, activo: item.activo }); setOpen(true) }
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
     setSaving(true)

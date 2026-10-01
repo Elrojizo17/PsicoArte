@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from django.db.models.deletion import ProtectedError
 from django.db.models import Q
 from django.contrib.auth import authenticate
@@ -10,18 +12,36 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import JORNADAS_MUSICALES, Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Conversacion, Jornada, Mensaje, Pago, PlantillaMensaje
+from .models import (
+    JORNADAS_MUSICALES,
+    Alumno,
+    AlumnoClase,
+    Asistencia,
+    Acudiente,
+    ClaseProgramada,
+    Conversacion,
+    ExcepcionClase,
+    Jornada,
+    Mensaje,
+    Pago,
+    PlantillaClase,
+    PlantillaClaseAlumno,
+    PlantillaMensaje,
+)
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
 from .serializers import (
     AlumnoClaseSerializer,
     AlumnoSerializer,
     AcudienteSerializer,
     ClaseProgramadaSerializer,
+    ExcepcionClaseSerializer,
     JornadaSerializer,
     PagoSerializer,
     AsistenciaSerializer,
     ConversacionSerializer,
     MensajeSerializer,
+    PlantillaClaseAlumnoSerializer,
+    PlantillaClaseSerializer,
     PlantillaMensajeSerializer,
 )
 
@@ -283,6 +303,76 @@ class ClaseProgramadaViewSet(viewsets.ModelViewSet):
             )
         relacion.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PlantillaClaseViewSet(viewsets.ModelViewSet):
+    queryset = PlantillaClase.objects.select_related('jornada').prefetch_related('alumnos__alumno', 'excepciones__alumno').all()
+    serializer_class = PlantillaClaseSerializer
+    permission_classes = [IsAuthenticated, EsPersonalEmpresa]
+
+    @action(detail=True, methods=['get', 'post'], url_path='alumnos')
+    def alumnos(self, request, pk=None):
+        plantilla = self.get_object()
+        if request.method == 'GET':
+            alumnos = plantilla.obtener_alumnos_para_fecha(plantilla.fecha_inicio)
+            return Response(AlumnoSerializer(alumnos, many=True).data)
+
+        serializer = PlantillaClaseAlumnoSerializer(data={'ti': request.data.get('ti')})
+        serializer.is_valid(raise_exception=True)
+        PlantillaClaseAlumno.objects.get_or_create(plantilla=plantilla, alumno=serializer.validated_data['alumno'])
+        return Response({'detail': 'Alumno añadido a la plantilla.'}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path=r'alumnos/(?P<ti>[^/.]+)')
+    def retirar_alumno(self, request, pk=None, ti=None):
+        plantilla = self.get_object()
+        deleted, _ = PlantillaClaseAlumno.objects.filter(plantilla=plantilla, alumno_id=ti).delete()
+        if deleted == 0:
+            return Response({'detail': 'El alumno no pertenece a la plantilla.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], url_path='excepciones')
+    def crear_excepcion(self, request, pk=None):
+        plantilla = self.get_object()
+        serializer = ExcepcionClaseSerializer(data={**request.data, 'observacion': request.data.get('observacion', '')})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(plantilla=plantilla)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='generar')
+    def generar_clases(self, request, pk=None):
+        plantilla = self.get_object()
+        fecha_inicio = request.data.get('fecha_inicio') or plantilla.fecha_inicio.isoformat()
+        fecha_fin = request.data.get('fecha_fin') or (plantilla.fecha_fin.isoformat() if plantilla.fecha_fin else fecha_inicio)
+        start = date.fromisoformat(fecha_inicio)
+        end = date.fromisoformat(fecha_fin)
+        if end < start:
+            return Response({'detail': 'La fecha final no puede ser anterior a la inicial.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        created = []
+        current = start
+        day_names = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+        while current <= end:
+            is_matching_day = plantilla.jornada.dia_semana == day_names[current.weekday()]
+            is_matching_frequency = plantilla.frecuencia == 'semanal' or (current - start).days % 14 == 0
+            if is_matching_day and is_matching_frequency:
+                clase, created_flag = ClaseProgramada.objects.get_or_create(
+                    plantilla=plantilla,
+                    fecha=current,
+                    defaults={'jornada': plantilla.jornada},
+                )
+                if created_flag:
+                    created.append(clase.id_clase)
+                    alumnos_base = set(PlantillaClaseAlumno.objects.filter(plantilla=plantilla).values_list('alumno_id', flat=True))
+                    for excepcion in ExcepcionClase.objects.filter(plantilla=plantilla, fecha=current):
+                        if excepcion.accion == ExcepcionClase.AGREGAR:
+                            alumnos_base.add(excepcion.alumno_id)
+                        elif excepcion.accion == ExcepcionClase.QUITAR:
+                            alumnos_base.discard(excepcion.alumno_id)
+                    for alumno_id in sorted(alumnos_base):
+                        AlumnoClase.objects.get_or_create(alumno_id=alumno_id, clase=clase)
+            current = current + timedelta(days=1)
+
+        return Response({'generadas': created, 'cantidad': len(created)})
 
 
 class AlumnoClaseViewSet(viewsets.ModelViewSet):

@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, CreditCard, FileBadge, HeartHandshake, LogOut, UsersRound, Settings2 } from 'lucide-react'
+import { CalendarClock, CalendarDays, ClipboardList, CreditCard, FileBadge, HeartHandshake, LogOut, UsersRound, Settings2 } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
 
@@ -6,6 +6,7 @@ const baseNavigation = [
   { to: '/acudientes', label: 'Gestionar Acudientes', icon: HeartHandshake },
   { to: '/alumnos', label: 'Gestionar Alumnos', icon: UsersRound },
   { to: '/clases', label: 'Programar Clases', icon: CalendarDays },
+  { to: '/plantillas-clases', label: 'Plantillas de clases', icon: ClipboardList },
   { to: '/pagos', label: 'Pagos', icon: CreditCard },
   { to: '/automatizacion', label: 'Automatización de mensajes', icon: Settings2 },
 ]

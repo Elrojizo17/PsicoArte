@@ -2,7 +2,21 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from uuid import uuid4
 
-from .models import Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Conversacion, Jornada, Mensaje, Pago, PlantillaMensaje
+from .models import (
+    Alumno,
+    AlumnoClase,
+    Asistencia,
+    Acudiente,
+    ClaseProgramada,
+    Conversacion,
+    ExcepcionClase,
+    Jornada,
+    Mensaje,
+    Pago,
+    PlantillaClase,
+    PlantillaClaseAlumno,
+    PlantillaMensaje,
+)
 
 
 class PlantillaMensajeSerializer(serializers.ModelSerializer):
@@ -231,11 +245,17 @@ class ClaseProgramadaSerializer(serializers.ModelSerializer):
     )
     jornada_detalle = JornadaSummarySerializer(source='jornada', read_only=True)
     alumnos = serializers.SerializerMethodField()
+    id_plantilla = serializers.PrimaryKeyRelatedField(
+        source='plantilla',
+        queryset=PlantillaClase.objects.all(),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = ClaseProgramada
-        fields = ('id_clase', 'id_jornada', 'jornada_detalle', 'fecha', 'alumnos')
-        read_only_fields = ('id_clase', 'alumnos')
+        fields = ('id_clase', 'id_jornada', 'jornada_detalle', 'fecha', 'alumnos', 'id_plantilla', 'plantilla')
+        read_only_fields = ('id_clase', 'alumnos', 'plantilla')
 
     def get_alumnos(self, obj):
         alumnos = Alumno.objects.filter(inscripciones__clase=obj)
@@ -269,6 +289,69 @@ class ClaseProgramadaSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class PlantillaClaseAlumnoSerializer(serializers.ModelSerializer):
+    ti = serializers.PrimaryKeyRelatedField(source='alumno', queryset=Alumno.objects.all())
+
+    class Meta:
+        model = PlantillaClaseAlumno
+        fields = ('ti', 'alumno')
+        read_only_fields = ('alumno',)
+
+
+class ExcepcionClaseSerializer(serializers.ModelSerializer):
+    ti = serializers.PrimaryKeyRelatedField(source='alumno', queryset=Alumno.objects.all())
+
+    class Meta:
+        model = ExcepcionClase
+        fields = ('id', 'fecha', 'ti', 'accion', 'observacion')
+        read_only_fields = ('id',)
+
+
+class PlantillaClaseSerializer(serializers.ModelSerializer):
+    id_jornada = serializers.PrimaryKeyRelatedField(
+        source='jornada',
+        queryset=Jornada.objects.all(),
+        write_only=True,
+    )
+    jornada_detalle = JornadaSummarySerializer(source='jornada', read_only=True)
+    alumnos = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlantillaClase
+        fields = (
+            'id_plantilla',
+            'id_jornada',
+            'jornada_detalle',
+            'nombre',
+            'descripcion',
+            'fecha_inicio',
+            'fecha_fin',
+            'activo',
+            'es_recurrente',
+            'frecuencia',
+            'alumnos',
+        )
+        read_only_fields = ('id_plantilla', 'alumnos', 'jornada_detalle')
+
+    def get_alumnos(self, obj):
+        return AlumnoSummarySerializer(obj.obtener_alumnos_para_fecha(obj.fecha_inicio), many=True).data
+
+    def validate(self, attrs):
+        jornada = attrs.get('jornada', getattr(self.instance, 'jornada', None))
+        fecha_inicio = attrs.get('fecha_inicio', getattr(self.instance, 'fecha_inicio', None))
+        fecha_fin = attrs.get('fecha_fin', getattr(self.instance, 'fecha_fin', None))
+        if fecha_inicio and fecha_fin and fecha_fin < fecha_inicio:
+            raise serializers.ValidationError({'fecha_fin': 'La fecha final no puede ser anterior a la inicial.'})
+        if jornada and fecha_inicio:
+            day_names = ('Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo')
+            expected_day = day_names[fecha_inicio.weekday()]
+            if jornada.dia_semana != expected_day:
+                raise serializers.ValidationError({
+                    'id_jornada': f'La plantilla usa {jornada.dia_semana}, pero la fecha de inicio es {expected_day}.'
+                })
+        return attrs
+
+
 class AlumnoClaseSerializer(serializers.ModelSerializer):
     ti = serializers.PrimaryKeyRelatedField(source='alumno', queryset=Alumno.objects.all())
     id_clase = serializers.PrimaryKeyRelatedField(source='clase', queryset=ClaseProgramada.objects.all())
@@ -292,6 +375,17 @@ class AsistenciaSerializer(serializers.ModelSerializer):
 
     def get_alumno_nombre(self, obj):
         return f'{obj.alumno.nombre_1} {obj.alumno.apellido_1}'
+
+    def validate(self, attrs):
+        alumno = attrs.get('alumno', getattr(self.instance, 'alumno', None))
+        clase = attrs.get('clase', getattr(self.instance, 'clase', None))
+        estado = attrs.get('estado', getattr(self.instance, 'estado', Asistencia.PROGRAMADA))
+        observacion = attrs.get('observacion', getattr(self.instance, 'observacion', ''))
+        if alumno and clase and not AlumnoClase.objects.filter(alumno=alumno, clase=clase).exists():
+            raise serializers.ValidationError('El alumno no está inscrito en esta clase.')
+        if estado == Asistencia.POSPUESTA and not observacion.strip():
+            raise serializers.ValidationError({'observacion': 'La clase pospuesta requiere una justificación.'})
+        return attrs
 
 
 class MensajeSerializer(serializers.ModelSerializer):

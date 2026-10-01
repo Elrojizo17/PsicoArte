@@ -11,6 +11,7 @@ from .views import (
     AsistenciaViewSet,
     ConversacionViewSet,
     MensajeViewSet,
+    PlantillaClaseViewSet,
     PlantillaMensajeListUpdateView,
     aviso_pagos_view,
 )
@@ -22,6 +23,7 @@ router.register('acudientes', AcudienteViewSet, basename='acudiente')
 router.register('alumnos', AlumnoViewSet, basename='alumno')
 router.register('jornadas', JornadaViewSet, basename='jornada')
 router.register('clases', ClaseProgramadaViewSet, basename='clase')
+router.register('plantillas-clase', PlantillaClaseViewSet, basename='plantilla-clase')
 router.register('alumno-clase', AlumnoClaseViewSet, basename='alumno-clase')
 router.register('pagos', PagoViewSet, basename='pago')
 router.register('asistencias', AsistenciaViewSet, basename='asistencia')

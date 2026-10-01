@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Clock3, Pencil, Search, Trash2, Users } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Clock3, Pencil, Search, Trash2, Users } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
@@ -9,7 +9,7 @@ import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 import { api, endpoints } from '../services/api'
 import { confirmAction, showSuccess } from '../services/alerts'
-import type { Alumno, Clase, Jornada } from '../types'
+import type { Alumno, Asistencia, Clase, Jornada } from '../types'
 
 const hours = Array.from({ length: 10 }, (_, i) => i + 9)
 const dateKey = (date: Date) => date.toISOString().slice(0, 10)
@@ -73,10 +73,66 @@ function DayClasses({ day, classes, onOpen, onEdit, onRemove }: { day: Date; cla
   return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{dayClasses.length === 0 ? <p className="rounded-2xl border border-dashed border-primary-light bg-white p-6 text-sm text-slate-500">No hay clases programadas para este día.</p> : dayClasses.map(item => <article key={item.id_clase} className="group rounded-2xl border border-primary-light/70 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><button type="button" onClick={() => onOpen(item)} className="block w-full text-left"><div className="flex items-start justify-between gap-3"><div><p className="font-bold text-primary-dark">{item.jornada_detalle?.tipo_jornada || 'Clase programada'}</p><p className="mt-1 flex items-center gap-1 text-sm font-semibold text-slate-600"><Clock3 size={15}/>{item.jornada_detalle?.hora_inicio.slice(0, 5)} - {item.jornada_detalle?.hora_final.slice(0, 5)}</p></div><Users size={19} className="text-primary"/></div><p className="mt-3 border-t border-border pt-3 text-xs text-slate-500">{item.alumnos?.length || 0} alumnos inscritos</p></button><div className="mt-3 flex justify-end gap-1 border-t border-border pt-2"><button type="button" aria-label="Editar clase" onClick={() => onEdit(item)} className="rounded-lg p-2 text-primary hover:bg-background"><Pencil size={16}/></button><button type="button" aria-label="Eliminar clase" onClick={() => onRemove(item.id_clase)} className="rounded-lg p-2 text-red-500 hover:bg-red-50"><Trash2 size={16}/></button></div></article>)}</div>
 }
 
+function AttendanceRow({ studentName, studentId, attendance, onSave }: { studentName: string; studentId: string; attendance?: Asistencia; onSave: (studentId: string, state: Asistencia['estado'], observation: string) => Promise<void> }) {
+  const [state, setState] = useState<Asistencia['estado']>(attendance?.estado || 'programada')
+  const [observation, setObservation] = useState(attendance?.observacion || '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setState(attendance?.estado || 'programada')
+    setObservation(attendance?.observacion || '')
+  }, [attendance])
+
+  const stateOptions: Array<{ value: Asistencia['estado']; label: string; tone: string }> = [
+    { value: 'programada', label: 'Pendiente', tone: 'border-slate-200 bg-slate-100 text-slate-700' },
+    { value: 'presente', label: 'Asistió', tone: 'border-emerald-200 bg-emerald-100 text-emerald-700' },
+    { value: 'ausente', label: 'Inasist.', tone: 'border-amber-200 bg-amber-100 text-amber-700' },
+    { value: 'pospuesta', label: 'Pospuesta', tone: 'border-sky-200 bg-sky-100 text-sky-700' },
+  ]
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await onSave(studentId, state, observation)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return <div className="rounded-2xl border border-primary-light/70 bg-white p-3 shadow-sm">
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="truncate font-bold text-primary-dark">{studentName}</p>
+        <p className="mt-1 text-[11px] text-slate-500">TI: {displayStudentId(studentId)}</p>
+      </div>
+      <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${stateOptions.find((option) => option.value === state)?.tone ?? 'border-slate-200 bg-slate-100 text-slate-700'}`}>
+        {stateOptions.find((option) => option.value === state)?.label ?? 'Pendiente'}
+      </span>
+    </div>
+
+    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {stateOptions.map((option) => {
+        const active = state === option.value
+        return <button key={option.value} type="button" onClick={() => setState(option.value)} className={`rounded-xl border px-2 py-2.5 text-center text-[11px] font-bold transition ${active ? option.tone : 'border-slate-200 bg-slate-50 text-slate-600'} ${active ? 'shadow-sm ring-2 ring-primary/10' : ''}`} aria-pressed={active}>
+          {option.label}
+        </button>
+      })}
+    </div>
+
+    <textarea value={observation} onChange={(event) => setObservation(event.target.value)} placeholder="Justificación u observación" maxLength={255} rows={2} className="mt-3 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-primary-dark focus:bg-white focus:ring-2 focus:ring-primary/15" />
+
+    <button type="button" disabled={saving} onClick={() => void save()} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60">
+      <Check size={16} />
+      {saving ? 'Guardando...' : 'Guardar'}
+    </button>
+  </div>
+}
+
 export function ClasesPage() {
   const [classes, setClasses] = useState<Clase[]>([])
   const [jornadas, setJornadas] = useState<Jornada[]>([])
   const [students, setStudents] = useState<Alumno[]>([])
+  const [attendances, setAttendances] = useState<Asistencia[]>([])
   const [selectionKeys, setSelectionKeys] = useState<SelectionMap>({})
   const [studentSearch, setStudentSearch] = useState('')
   const [form, setForm] = useState<FormData>({ id_jornada: '', fecha: dateKey(new Date()) })
@@ -128,14 +184,16 @@ export function ClasesPage() {
     try {
       setLoading(true)
       setError('')
-      const [classResponse, journeyResponse, studentResponse] = await Promise.all([
+      const [classResponse, journeyResponse, studentResponse, attendanceResponse] = await Promise.all([
         api.get<Clase[]>(endpoints.clases),
         api.get<Jornada[]>(endpoints.jornadas),
         api.get<Alumno[]>(endpoints.alumnos),
+        api.get<Asistencia[]>(endpoints.asistencias),
       ])
       setClasses(classResponse.data)
       setJornadas(journeyResponse.data)
       setStudents(studentResponse.data)
+      setAttendances(attendanceResponse.data)
     } catch {
       setError('No se pudo cargar el calendario. Verifica que el backend esté activo.')
     } finally {
@@ -290,6 +348,24 @@ export function ClasesPage() {
 
   const openDetails = (item: Clase) => {
     setSelectedClass(item)
+  }
+
+  const saveAttendance = async (studentId: string, state: Asistencia['estado'], observation: string) => {
+    if (!selectedClass) return
+    const existing = attendances.find((item) => item.alumno === studentId && item.clase === selectedClass.id_clase)
+    const payload = { alumno: studentId, clase: selectedClass.id_clase, estado: state, observacion: observation }
+    try {
+      const response = existing
+        ? await api.patch<Asistencia>(`${endpoints.asistencias}${existing.id_asistencia}/`, payload)
+        : await api.post<Asistencia>(endpoints.asistencias, payload)
+      setAttendances((current) => existing
+        ? current.map((item) => item.id_asistencia === existing.id_asistencia ? response.data : item)
+        : [response.data, ...current])
+      await load()
+      await showSuccess('Asistencia guardada', 'El estado del alumno y su saldo fueron actualizados.')
+    } catch {
+      setError('No se pudo guardar la asistencia. Verifica que el alumno esté inscrito en la clase.')
+    }
   }
 
   const selectedClassStudents = selectedClass?.alumnos?.map((summary) => ({
@@ -510,17 +586,13 @@ export function ClasesPage() {
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {selectedClassStudents.map(({ summary, detail }) => (
-                    <div key={summary.ti} className="rounded-xl border border-border bg-white p-3">
-                      <p className="font-bold text-primary-dark">
-                        {detail?.nombre_1 || summary.nombre_1} {detail?.apellido_1 || summary.apellido_1}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">TI: {displayStudentId(summary.ti)}</p>
-                      {detail?.acudiente_detalle && (
-                        <p className="mt-1 text-xs text-slate-500">
-                          Acudiente: {detail.acudiente_detalle.nombre_1} {detail.acudiente_detalle.apellido_1}
-                        </p>
-                      )}
-                    </div>
+                    <AttendanceRow
+                      key={summary.ti}
+                      studentId={summary.ti}
+                      studentName={`${detail?.nombre_1 || summary.nombre_1} ${detail?.apellido_1 || summary.apellido_1}`}
+                      attendance={attendances.find((item) => item.alumno === summary.ti && item.clase === selectedClass.id_clase)}
+                      onSave={saveAttendance}
+                    />
                   ))}
                 </div>
               )}

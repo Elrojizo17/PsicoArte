@@ -44,6 +44,20 @@ export interface Jornada {
   tipo_jornada: 'Estimulación Temprana' | 'Iniciación Musical' | 'Ensamble Musical'
 }
 
+export interface PlantillaClase {
+  id_plantilla: number
+  id_jornada?: number
+  jornada_detalle?: Jornada
+  nombre: string
+  descripcion?: string
+  fecha_inicio: string
+  fecha_fin: string | null
+  activo: boolean
+  es_recurrente: boolean
+  frecuencia: 'semanal' | 'quincenal'
+  alumnos?: AlumnoSummary[]
+}
+
 export interface Clase {
   id_clase: number
   id_jornada?: number
@@ -59,7 +73,7 @@ export interface Asistencia {
   clase: number
   fecha: string
   jornada: Jornada
-  estado: 'programada' | 'presente' | 'ausente'
+  estado: 'programada' | 'presente' | 'ausente' | 'pospuesta'
   observacion: string
 }
 

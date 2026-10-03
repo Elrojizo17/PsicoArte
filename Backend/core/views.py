@@ -12,6 +12,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.authtoken.models import Token
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+import logging
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import AnonRateThrottle
@@ -33,6 +34,8 @@ from .models import (
     PlantillaClaseAlumno,
     PlantillaMensaje,
 )
+
+logger = logging.getLogger(__name__)
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
 from .serializers import (
     AlumnoClaseSerializer,
@@ -272,6 +275,7 @@ class MensajeViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('No puedes escribir en esta conversación.')
         message = serializer.save(remitente=self.request.user)
         payload = MensajeSerializer(message, context={'request': self.request}).data
+        logger.info('Dispatching WebSocket message event conversation_id=%s message_id=%s sender_user_id=%s', conversation.id, message.id, self.request.user.id)
         async_to_sync(get_channel_layer().group_send)(f'mensajeria_{conversation.id}', {'type': 'message_created', 'message': payload})
 
 

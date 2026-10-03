@@ -6,10 +6,10 @@ import 'primeicons/primeicons.css'
 import App from './App.tsx'
 import './index.css'
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      // Ignoramos errores de registro para que la app siga funcionando en entornos locales.
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.error('No se pudo registrar el service worker:', error)
     })
   })
 }

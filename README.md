@@ -155,9 +155,26 @@ DB_USER=usuario_de_postgresql
 DB_PASSWORD=contraseña_de_postgresql
 DB_HOST=127.0.0.1
 DB_PORT=5432
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=.vapid/private_key.pem
+VAPID_ADMIN_EMAIL=tu-correo@example.com
 ```
 
 No subas este archivo a repositorios públicos. El proyecto ya lo excluye mediante `.gitignore`.
+
+#### Claves VAPID para Web Push
+
+Después de instalar las dependencias del backend, genera una pareja de claves una sola vez desde `Backend`:
+
+```powershell
+New-Item -ItemType Directory -Force .vapid | Out-Null
+Push-Location .vapid
+& ..\.venv\Scripts\vapid.exe --gen
+$publicKey = & ..\.venv\Scripts\vapid.exe --applicationServerKey
+Pop-Location
+```
+
+Copia el valor que imprime `--applicationServerKey` a `VAPID_PUBLIC_KEY` en `Backend/.env`; `VAPID_PRIVATE_KEY` debe apuntar al archivo privado `.vapid/private_key.pem`, y `VAPID_ADMIN_EMAIL` debe ser un correo de contacto válido. Conserva la misma pareja de claves y no publiques ni compartas la clave privada.
 
 Después de configurar la base de datos, ejecuta las migraciones:
 
@@ -223,6 +240,7 @@ npm run build
 | Jornadas | `/api/jornadas/` | Configurar horarios institucionales |
 | Clases | `/api/clases/` | Programar clases y consultar inscritos |
 | Alumno-clase | `/api/alumno-clase/` | Gestionar relaciones de inscripción |
+| Push | `/api/push/public-key/`, `/api/push/subscriptions/` | Consultar la clave pública, registrar y dar de baja suscripciones autenticadas |
 
 La API utiliza los endpoints estándar de Django REST Framework para listar, crear, actualizar y eliminar recursos, según las reglas de cada entidad.
 

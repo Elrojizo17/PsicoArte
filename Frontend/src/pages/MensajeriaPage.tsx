@@ -95,9 +95,15 @@ export function MensajeriaPage() {
     api.get<Mensaje[]>(`${endpoints.mensajes}?conversacion=${selected.id}`).then(response => { if (active) setMessages(response.data) }).catch(() => setError('No se pudieron cargar los mensajes.')).finally(() => { if (active) setMessagesLoading(false) })
     void api.post(`${endpoints.conversaciones}${selected.id}/marcar-leidos/`)
     const token = localStorage.getItem('token')
-    const socket = new WebSocket(`${socketOrigin}/ws/mensajeria/${selected.id}/?token=${encodeURIComponent(token || '')}`)
+    const socketUrl = `${socketOrigin}/ws/mensajeria/${selected.id}/?token=${encodeURIComponent(token || '')}`
+    console.log('[PsicoArte messaging] opening WebSocket', { socketUrl: socketUrl.replace(/([?&]token=)[^&]*/, '$1[redacted]'), pageOrigin: window.location.origin })
+    const socket = new WebSocket(socketUrl)
+    socket.onopen = () => console.log('[PsicoArte messaging] WebSocket connected', { conversationId: selected.id })
+    socket.onerror = event => console.error('[PsicoArte messaging] WebSocket error', event)
+    socket.onclose = event => console.log('[PsicoArte messaging] WebSocket closed', { conversationId: selected.id, code: event.code, reason: event.reason, wasClean: event.wasClean })
     socket.onmessage = event => {
       const message = JSON.parse(event.data) as Mensaje
+      console.log('[PsicoArte messaging] WebSocket message received', { conversationId: selected.id, messageId: message.id, own: message.es_propio })
       setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
       setConversations(current => current.map(item => item.id === selected.id ? { ...item, no_leidos: 0, ultimo_mensaje: message } : item))
     }

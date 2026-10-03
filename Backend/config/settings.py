@@ -30,6 +30,9 @@ if not SECRET_KEY:
     raise ImproperlyConfigured('Define DJANGO_SECRET_KEY en el entorno antes de iniciar Django.')
 
 DEBUG = os.getenv('DJANGO_DEBUG', 'False').strip().lower() in ('1', 'true', 'yes', 'on')
+VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
+VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
+VAPID_ADMIN_EMAIL = os.getenv('VAPID_ADMIN_EMAIL', '')
 
 ALLOWED_HOSTS = [
     host.strip()

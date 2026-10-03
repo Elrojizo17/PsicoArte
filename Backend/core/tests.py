@@ -1,10 +1,21 @@
 from datetime import date
 
+from django.contrib.auth.models import User
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Alumno, AlumnoClase, Asistencia, Acudiente, ClaseProgramada, Jornada, Pago
+from .models import (
+    Alumno,
+    AlumnoClase,
+    Asistencia,
+    Acudiente,
+    ClaseProgramada,
+    Jornada,
+    Pago,
+    PushSubscription,
+)
 
 
 class ApiCrudTests(APITestCase):
@@ -120,3 +131,107 @@ class ApiCrudTests(APITestCase):
         self.assertEqual(len(detail['clases_consumidas']), 2)
         self.assertEqual(detail['clases_disponibles'], 1)
         self.assertEqual(detail['clases_cubiertas'], [date(2026, 9, 23), date(2026, 9, 24)])
+
+
+class PushSubscriptionApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='push-user', password='test-password')
+        self.other_user = User.objects.create_user(username='other-user', password='test-password')
+        self.client.force_authenticate(self.user)
+        self.public_key_url = reverse('push-public-key')
+        self.subscriptions_url = reverse('push-subscriptions')
+        self.subscription_data = {
+            'endpoint': 'https://push.example.test/subscription/123',
+            'keys': {'p256dh': 'test-p256dh', 'auth': 'test-auth'},
+        }
+
+    def test_public_key_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.public_key_url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @override_settings(VAPID_PUBLIC_KEY='test-public-key')
+    def test_get_public_key(self):
+        response = self.client.get(self.public_key_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {'publicKey': 'test-public-key'})
+
+    @override_settings(VAPID_PUBLIC_KEY='')
+    def test_get_public_key_reports_missing_configuration(self):
+        response = self.client.get(self.public_key_url)
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    def test_register_subscription_and_repeat_is_idempotent(self):
+        self.client.credentials(HTTP_USER_AGENT='PsicoArte test browser')
+        first_response = self.client.post(
+            self.subscriptions_url,
+            self.subscription_data,
+            format='json',
+        )
+        second_response = self.client.post(
+            self.subscriptions_url,
+            self.subscription_data,
+            format='json',
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(first_response.data['created'])
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(second_response.data['created'])
+        self.assertEqual(PushSubscription.objects.count(), 1)
+        saved = PushSubscription.objects.get()
+        self.assertEqual(saved.usuario, self.user)
+        self.assertEqual(saved.p256dh, 'test-p256dh')
+        self.assertEqual(saved.auth, 'test-auth')
+        self.assertEqual(saved.user_agent, 'PsicoArte test browser')
+
+    def test_register_rejects_invalid_subscription(self):
+        response = self.client.post(
+            self.subscriptions_url,
+            {'endpoint': 'not-a-url', 'keys': {}},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(PushSubscription.objects.count(), 0)
+
+    def test_delete_subscription_only_removes_current_users_endpoint(self):
+        subscription = PushSubscription.objects.create(
+            usuario=self.other_user,
+            endpoint=self.subscription_data['endpoint'],
+            p256dh='test-p256dh',
+            auth='test-auth',
+        )
+        response = self.client.delete(
+            self.subscriptions_url,
+            {'endpoint': self.subscription_data['endpoint']},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(PushSubscription.objects.filter(pk=subscription.pk).exists())
+
+        subscription.usuario = self.user
+        subscription.save(update_fields=['usuario'])
+        response = self.client.delete(
+            self.subscriptions_url,
+            {'endpoint': self.subscription_data['endpoint']},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(PushSubscription.objects.filter(pk=subscription.pk).exists())
+
+    def test_subscription_endpoints_require_authentication(self):
+        self.client.force_authenticate(user=None)
+        get_response = self.client.get(self.public_key_url)
+        post_response = self.client.post(
+            self.subscriptions_url,
+            self.subscription_data,
+            format='json',
+        )
+        delete_response = self.client.delete(
+            self.subscriptions_url,
+            {'endpoint': self.subscription_data['endpoint']},
+            format='json',
+        )
+        self.assertEqual(get_response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(post_response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(delete_response.status_code, status.HTTP_401_UNAUTHORIZED)

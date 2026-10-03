@@ -1,10 +1,13 @@
 from urllib.parse import parse_qs
+import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from rest_framework.authtoken.models import Token
 
 from .models import Conversacion
+
+logger = logging.getLogger(__name__)
 
 
 class MessagingConsumer(AsyncJsonWebsocketConsumer):
@@ -13,14 +16,17 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
         token = parse_qs(self.scope['query_string'].decode()).get('token', [None])[0]
         self.user = await self.get_user(token)
         if not self.user or not await self.can_access_conversation():
+            logger.warning('WebSocket messaging rejected conversation_id=%s authenticated=%s', self.conversation_id, bool(self.user))
             await self.close(code=4401)
             return
 
         self.group_name = f'mensajeria_{self.conversation_id}'
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        logger.info('WebSocket messaging connected conversation_id=%s user_id=%s', self.conversation_id, self.user.id)
 
     async def disconnect(self, close_code):
+        logger.info('WebSocket messaging disconnected conversation_id=%s close_code=%s', getattr(self, 'conversation_id', None), close_code)
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
@@ -29,6 +35,7 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
             await self.mark_read()
 
     async def message_created(self, event):
+        logger.info('WebSocket message event delivered conversation_id=%s message_id=%s recipient_user_id=%s', self.conversation_id, event['message'].get('id'), self.user.id)
         message = {**event['message'], 'es_propio': event['message']['remitente_id'] == self.user.id}
         await self.send_json(message)
 

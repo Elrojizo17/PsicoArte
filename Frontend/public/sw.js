@@ -15,6 +15,45 @@ self.addEventListener('activate', (event) => {
   )
 })
 
+self.addEventListener('push', (event) => {
+  let payload = {}
+
+  if (event.data) {
+    try {
+      payload = event.data.json()
+    } catch {
+      payload = { body: event.data.text() }
+    }
+  }
+
+  const title = payload.title || 'PsicoArte'
+  const options = {
+    body: payload.body || '',
+    icon: payload.icon || '/logo.png',
+    tag: payload.tag,
+    data: { url: payload.url || '/' },
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin)
+  if (targetUrl.origin !== self.location.origin) {
+    targetUrl.href = self.location.origin
+  }
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const openClient = clients.find((client) => new URL(client.url).origin === self.location.origin)
+      if (openClient) return openClient.focus()
+      return self.clients.openWindow(targetUrl.href)
+    }),
+  )
+})
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
 

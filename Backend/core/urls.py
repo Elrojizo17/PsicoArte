@@ -15,6 +15,7 @@ from .views import (
     PlantillaMensajeListUpdateView,
     aviso_pagos_view,
 )
+from .push_views import PushPublicKeyView, PushSubscriptionView
 
 from django.urls import path
 
@@ -31,4 +32,9 @@ router.register('mensajeria/conversaciones', ConversacionViewSet, basename='conv
 router.register('mensajeria/mensajes', MensajeViewSet, basename='mensaje')
 router.register('automatizacion/plantillas', PlantillaMensajeListUpdateView, basename='plantilla-mensaje')
 
-urlpatterns = [path('login/', login_view, name='login'), path('automatizacion/aviso-pagos/', aviso_pagos_view, name='aviso-pagos')] + router.urls
+urlpatterns = [
+    path('login/', login_view, name='login'),
+    path('automatizacion/aviso-pagos/', aviso_pagos_view, name='aviso-pagos'),
+    path('push/public-key/', PushPublicKeyView.as_view(), name='push-public-key'),
+    path('push/subscriptions/', PushSubscriptionView.as_view(), name='push-subscriptions'),
+] + router.urls

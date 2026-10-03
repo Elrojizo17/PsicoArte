@@ -396,6 +396,27 @@ class RecordatorioEnviado(models.Model):
         constraints = [models.UniqueConstraint(fields=['clase', 'tipo'], name='uq_recordatorio_clase_tipo')]
 
 
+class PushSubscription(models.Model):
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='push_subscriptions',
+    )
+    endpoint = models.URLField(max_length=2000, unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    user_agent = models.CharField(max_length=1024, blank=True)
+    creada_en = models.DateTimeField(auto_now_add=True)
+    actualizada_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'push_subscription'
+        ordering = ['-actualizada_en']
+
+    def __str__(self):
+        return f'Suscripción push de {self.usuario}'
+
+
 class Pago(models.Model):
     id_pago = models.AutoField(primary_key=True)
     alumno = models.ForeignKey(Alumno, on_delete=models.PROTECT, related_name='pagos', db_column='ti_alumno')

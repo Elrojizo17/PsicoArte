@@ -147,14 +147,10 @@ npm ci
 
 ## Configuración del backend
 
-Crea el archivo `Backend/.env` a partir de la configuración de tu instalación local de PostgreSQL:
+Crea el archivo `Backend/.env` con la URL de conexión de PostgreSQL. Para Supabase, usa el connection string de Session pooler e incluye el identificador del proyecto en el usuario:
 
 ```env
-DB_NAME=nombre_de_la_base
-DB_USER=usuario_de_postgresql
-DB_PASSWORD=contraseña_de_postgresql
-DB_HOST=127.0.0.1
-DB_PORT=5432
+DATABASE_URL=postgresql://postgres.<project-ref>:<contraseña>@aws-1-<region>.pooler.supabase.com:5432/postgres
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=.vapid/private_key.pem
 VAPID_ADMIN_EMAIL=tu-correo@example.com

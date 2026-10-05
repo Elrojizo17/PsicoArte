@@ -229,6 +229,13 @@ class ConversacionViewSet(viewsets.ModelViewSet):
             messages.exclude(remitente=request.user).update(leido_por_acudiente=True)
         else:
             messages.exclude(remitente=request.user).update(leido_por_personal=True)
+        try:
+            async_to_sync(get_channel_layer().group_send)(
+                f'mensajeria_{conversation.id}',
+                {'type': 'read_receipt_created'},
+            )
+        except Exception:
+            logger.exception('WebSocket read receipt dispatch failed conversation_id=%s', conversation.id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

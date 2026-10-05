@@ -102,7 +102,14 @@ export function MensajeriaPage() {
     socket.onerror = event => console.error('[PsicoArte messaging] WebSocket error', event)
     socket.onclose = event => console.log('[PsicoArte messaging] WebSocket closed', { conversationId: selected.id, code: event.code, reason: event.reason, wasClean: event.wasClean })
     socket.onmessage = event => {
-      const message = JSON.parse(event.data) as Mensaje
+      const payload = JSON.parse(event.data) as Mensaje | { type: 'read_receipt' }
+      if ('type' in payload && payload.type === 'read_receipt') {
+        void api.get<Mensaje[]>(`${endpoints.mensajes}?conversacion=${selected.id}`).then(response => {
+          if (active) setMessages(response.data)
+        }).catch(() => { /* The periodic refresh will load the updated read state. */ })
+        return
+      }
+      const message = payload as Mensaje
       console.log('[PsicoArte messaging] WebSocket message received', { conversationId: selected.id, messageId: message.id, own: message.es_propio })
       setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
       setConversations(current => current.map(item => item.id === selected.id ? { ...item, no_leidos: 0, ultimo_mensaje: message } : item))

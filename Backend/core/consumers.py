@@ -39,6 +39,9 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
         message = {**event['message'], 'es_propio': event['message']['remitente_id'] == self.user.id}
         await self.send_json(message)
 
+    async def read_receipt_created(self, event):
+        await self.send_json({'type': 'read_receipt'})
+
     @database_sync_to_async
     def get_user(self, token_key):
         if not token_key:

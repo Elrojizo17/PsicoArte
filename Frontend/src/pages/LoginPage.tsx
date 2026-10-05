@@ -49,7 +49,7 @@ export function LoginPage() {
       <section className="login-banner">
         <div className="banner-content">
           {/* Logo para versión de escritorio */}
-          <img className="login-logo-desktop" src="/src/assets/logo.png" alt="Psicoarte" />
+          <img className="login-logo-desktop" src="/logo.png" alt="Psicoarte" />
           
           <h1 className="banner-title">¡Hola,<br/>Bienvenido a Psicoarte!</h1>
           <p className="banner-text">
@@ -64,7 +64,7 @@ export function LoginPage() {
       <section className="login-content" aria-labelledby="login-title">
         <div className="login-form-wrapper">
           {/* Logo para versión móvil (Oculto en escritorio) */}
-          <img className="login-logo-mobile" src="/src/assets/logo.png" alt="Psicoarte" />
+          <img className="login-logo-mobile" src="/logo.png" alt="Psicoarte" />
           
           <div className="login-header">
             <h2 id="login-title">¡Bienvenido!</h2>

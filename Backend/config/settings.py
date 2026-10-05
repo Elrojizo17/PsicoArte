@@ -39,6 +39,9 @@ ALLOWED_HOSTS = [
     for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
     if host.strip()
 ]
+render_hostname = os.getenv('RENDER_EXTERNAL_HOSTNAME')
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
 
 
 # Application definition
@@ -68,6 +71,7 @@ REST_FRAMEWORK = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -176,8 +180,17 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', str(BASE_DIR / 'media')))
 
 CORS_ALLOWED_ORIGINS = [
     origin.strip().rstrip('/')
@@ -185,6 +198,17 @@ CORS_ALLOWED_ORIGINS = [
         'DJANGO_CORS_ALLOWED_ORIGINS',
         'http://localhost:5173,http://127.0.0.1:5173',
     ).split(',')
+    if origin.strip()
+]
+
+# Render terminates HTTPS at its proxy. Trust its forwarded scheme so Django
+# builds secure URLs and handles secure cookies correctly behind the proxy.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip().rstrip('/')
+    for origin in os.getenv('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
     if origin.strip()
 ]
 

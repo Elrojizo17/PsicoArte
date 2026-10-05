@@ -5,3 +5,6 @@ python-dotenv==1.1.1
 psycopg[binary]==3.3.6
 channels==4.3.2
 pywebpush>=2.0.3,<3.0
+gunicorn>=23.0,<24.0
+uvicorn[standard]>=0.34,<1.0
+whitenoise>=6.9,<7.0

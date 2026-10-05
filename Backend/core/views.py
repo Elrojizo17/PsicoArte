@@ -276,7 +276,12 @@ class MensajeViewSet(viewsets.ModelViewSet):
         message = serializer.save(remitente=self.request.user)
         payload = MensajeSerializer(message, context={'request': self.request}).data
         logger.info('Dispatching WebSocket message event conversation_id=%s message_id=%s sender_user_id=%s', conversation.id, message.id, self.request.user.id)
-        async_to_sync(get_channel_layer().group_send)(f'mensajeria_{conversation.id}', {'type': 'message_created', 'message': payload})
+        try:
+            async_to_sync(get_channel_layer().group_send)(f'mensajeria_{conversation.id}', {'type': 'message_created', 'message': payload})
+        except Exception:
+            # The message and attachment are already persisted. Realtime delivery
+            # is best effort; clients also refresh the conversation over HTTP.
+            logger.exception('WebSocket message dispatch failed conversation_id=%s message_id=%s', conversation.id, message.id)
 
 
 class JornadaViewSet(viewsets.ModelViewSet):

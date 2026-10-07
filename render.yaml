@@ -12,6 +12,6 @@ services:
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_CORS_ALLOWED_ORIGINS
-        value: https://psico-arte-sigma.vercel.app
+        value: https://psicoarte.delvallesoftware.app
       - key: DATABASE_URL
         sync: false

@@ -16,6 +16,24 @@ export function MessageNotifications({ to, label, compact = false, onNavigate }:
   const previousUnread = useRef<number | null>(null)
   const pendingSummary = useRef<number | null>(null)
 
+  const registerPush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const { data } = await api.get<{ publicKey: string }>('/push/public-key/')
+      const decodeKey = (value: string) => {
+        const padded = value + '='.repeat((4 - value.length % 4) % 4)
+        const raw = atob(padded.replace(/-/g, '+').replace(/_/g, '/'))
+        return Uint8Array.from(raw, char => char.charCodeAt(0))
+      }
+      let subscription = await registration.pushManager.getSubscription()
+      if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeKey(data.publicKey) })
+      await api.post('/push/subscriptions/', subscription.toJSON())
+    } catch (error) {
+      console.error('[PsicoArte notifications] push subscription failed', error)
+    }
+  }
+
   useEffect(() => {
     if (!('Notification' in window) || Notification.permission !== 'default') return
 
@@ -27,6 +45,7 @@ export function MessageNotifications({ to, label, compact = false, onNavigate }:
       void Notification.requestPermission().then(result => {
         console.log('[PsicoArte notifications] permission request result', result)
         setPermission(result)
+        if (result === 'granted') void registerPush()
       }).catch(error => console.error('[PsicoArte notifications] permission request failed', error))
     }
 
@@ -36,6 +55,10 @@ export function MessageNotifications({ to, label, compact = false, onNavigate }:
       window.removeEventListener('click', requestPermission)
       window.removeEventListener('touchend', requestPermission)
     }
+  }, [])
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'granted') void registerPush()
   }, [])
 
   useEffect(() => {

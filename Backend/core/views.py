@@ -17,6 +17,7 @@ from rest_framework.decorators import action, api_view, permission_classes, thro
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.response import Response
+from rest_framework import serializers
 
 from .models import (
     JORNADAS_MUSICALES,
@@ -133,7 +134,8 @@ class AlumnoViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         permissions = [IsAuthenticated()]
-        if self.action in ('list', 'retrieve', 'update', 'partial_update'):
+        # Parents can consult their own children's records, but only staff may edit them.
+        if self.action in ('list', 'retrieve'):
             permissions.append(EsPersonalEmpresaOAcudiente())
         else:
             permissions.append(EsPersonalEmpresa())
@@ -289,6 +291,78 @@ class MensajeViewSet(viewsets.ModelViewSet):
             # The message and attachment are already persisted. Realtime delivery
             # is best effort; clients also refresh the conversation over HTTP.
             logger.exception('WebSocket message dispatch failed conversation_id=%s message_id=%s', conversation.id, message.id)
+        _send_message_push(message)
+
+
+def _send_message_push(message):
+    """Deliver a best-effort Web Push notification to the other participant."""
+    from django.conf import settings
+    from .models import PushSubscription
+    if not (settings.VAPID_PUBLIC_KEY and settings.VAPID_PRIVATE_KEY and settings.VAPID_ADMIN_EMAIL):
+        return
+    parent_user_id = message.conversacion.acudiente.usuario_id
+    # Staff messages go to the parent; parent messages are notified to staff subscriptions.
+    if parent_user_id and message.remitente_id == parent_user_id:
+        from django.contrib.auth.models import User
+        recipient_ids = User.objects.filter(groups__name__in=['Psicologia', 'Musical']).values_list('id', flat=True).distinct()
+        subscriptions = PushSubscription.objects.filter(usuario_id__in=recipient_ids)
+    else:
+        subscriptions = PushSubscription.objects.filter(usuario_id=parent_user_id) if parent_user_id else PushSubscription.objects.none()
+    try:
+        from pywebpush import WebPushException, webpush
+        import json
+        payload = json.dumps({'title': 'PsicoArte - Mensajes', 'body': (message.cuerpo or 'Te enviaron un archivo')[:140], 'url': '/mensajeria/'})
+        for subscription in subscriptions:
+            try:
+                webpush(
+                    subscription_info={'endpoint': subscription.endpoint, 'keys': {'p256dh': subscription.p256dh, 'auth': subscription.auth}},
+                    data=payload,
+                    vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                    vapid_claims={'sub': f'mailto:{settings.VAPID_ADMIN_EMAIL}'},
+                )
+            except WebPushException as exc:
+                if getattr(exc.response, 'status_code', None) in (404, 410):
+                    subscription.delete()
+                else:
+                    logger.warning('Web Push delivery failed subscription_id=%s: %s', subscription.pk, exc)
+    except Exception:
+        logger.exception('Web Push setup or delivery failed message_id=%s', message.pk)
+
+
+class BroadcastMessageSerializer(serializers.Serializer):
+    cuerpo = serializers.CharField(allow_blank=False, max_length=5000)
+    audiencia = serializers.ChoiceField(choices=('general', 'jornada', 'acudientes'))
+    jornada = serializers.PrimaryKeyRelatedField(queryset=Jornada.objects.all(), required=False)
+    acudientes = serializers.ListField(child=serializers.CharField(max_length=30), required=False, allow_empty=False)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, EsPersonalEmpresa])
+def mensaje_masivo_view(request):
+    serializer = BroadcastMessageSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+    if data['audiencia'] == 'jornada' and not data.get('jornada'):
+        return Response({'jornada': 'Selecciona una jornada.'}, status=status.HTTP_400_BAD_REQUEST)
+    if data['audiencia'] == 'acudientes' and not data.get('acudientes'):
+        return Response({'acudientes': 'Selecciona al menos un acudiente.'}, status=status.HTTP_400_BAD_REQUEST)
+    guardians = Acudiente.objects.all()
+    if data['audiencia'] == 'jornada':
+        guardians = guardians.filter(alumnos__inscripciones__clase__jornada=data['jornada']).distinct()
+    elif data['audiencia'] == 'acudientes':
+        guardians = guardians.filter(numero_documento__in=data['acudientes'])
+    sent = 0
+    for guardian in guardians.select_related('usuario'):
+        conversation, _ = Conversacion.objects.get_or_create(acudiente=guardian)
+        message = Mensaje.objects.create(conversacion=conversation, remitente=request.user, cuerpo=data['cuerpo'])
+        payload = MensajeSerializer(message, context={'request': request}).data
+        try:
+            async_to_sync(get_channel_layer().group_send)(f'mensajeria_{conversation.id}', {'type': 'message_created', 'message': payload})
+        except Exception:
+            logger.exception('WebSocket broadcast dispatch failed conversation_id=%s', conversation.id)
+        _send_message_push(message)
+        sent += 1
+    return Response({'enviados': sent}, status=status.HTTP_200_OK)
 
 
 class JornadaViewSet(viewsets.ModelViewSet):

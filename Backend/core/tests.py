@@ -1,8 +1,12 @@
-from datetime import date
+from datetime import date, datetime, time
+import sys
+from types import ModuleType
+from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import User
-from django.test import override_settings
+from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -13,8 +17,11 @@ from .models import (
     Acudiente,
     ClaseProgramada,
     Jornada,
+    Mensaje,
     Pago,
+    PlantillaMensaje,
     PushSubscription,
+    RecordatorioEnviado,
 )
 
 
@@ -235,3 +242,90 @@ class PushSubscriptionApiTests(APITestCase):
         self.assertEqual(get_response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(post_response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(delete_response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ReminderTaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='reminder-parent', password='test-password')
+        self.acudiente = Acudiente.objects.create(
+            usuario=self.user,
+            numero_documento='9003',
+            nombre_1='Laura',
+            apellido_1='Perez',
+            tipo_documento='CC',
+            telefono_1='3000000001',
+        )
+        self.alumno = Alumno.objects.create(
+            ti='1003',
+            nombre_1='Mateo',
+            apellido_1='Perez',
+            acudiente=self.acudiente,
+        )
+        self.now = timezone.make_aware(
+            datetime(2026, 9, 23, 7, 50),
+            timezone.get_current_timezone(),
+        )
+        self.jornada = Jornada.objects.create(
+            hora_inicio=time(8, 0),
+            hora_final=time(10, 0),
+            dia_semana='Miércoles',
+            tipo_jornada=Jornada.DESARROLLO_COGNITIVO,
+        )
+        self.clase = ClaseProgramada.objects.create(
+            jornada=self.jornada,
+            fecha=self.now.date(),
+        )
+        AlumnoClase.objects.create(alumno=self.alumno, clase=self.clase)
+        PlantillaMensaje.objects.create(
+            tipo=PlantillaMensaje.RECORDATORIO_CLASE,
+            texto='Recordatorio para {alumno} a las {hora} ({jornada}).',
+            activo=True,
+        )
+
+    def test_recordatorio_no_se_duplica_al_ejecutar_dos_ciclos(self):
+        from .tasks import revisar_recordatorios
+
+        with patch('core.tasks.timezone.localtime', return_value=self.now):
+            with patch('core.automation.async_to_sync'):
+                first = revisar_recordatorios()
+                second = revisar_recordatorios()
+
+        self.assertEqual(first['mensajes_creados'], 1)
+        self.assertEqual(second['mensajes_creados'], 0)
+        self.assertEqual(RecordatorioEnviado.objects.filter(clase=self.clase, tipo=RecordatorioEnviado.INICIO).count(), 1)
+        self.assertEqual(Mensaje.objects.filter(automatico=True).count(), 1)
+
+    @override_settings(
+        VAPID_PUBLIC_KEY='test-public-key',
+        VAPID_PRIVATE_KEY='test-private-key',
+        VAPID_ADMIN_EMAIL='test@example.com',
+    )
+    def test_push_se_envia_una_vez_por_acudiente_con_varios_alumnos(self):
+        from .tasks import revisar_recordatorios
+
+        second_student = Alumno.objects.create(
+            ti='1004',
+            nombre_1='Sofia',
+            apellido_1='Perez',
+            acudiente=self.acudiente,
+        )
+        AlumnoClase.objects.create(alumno=second_student, clase=self.clase)
+        PushSubscription.objects.create(
+            usuario=self.user,
+            endpoint='https://push.example.test/subscription/reminder',
+            p256dh='test-p256dh',
+            auth='test-auth',
+        )
+        webpush = Mock()
+        push_module = ModuleType('pywebpush')
+        push_module.WebPushException = type('WebPushException', (Exception,), {})
+        push_module.webpush = webpush
+
+        with patch.dict(sys.modules, {'pywebpush': push_module}):
+            with patch('core.tasks.timezone.localtime', return_value=self.now):
+                with patch('core.automation.async_to_sync'):
+                    with self.captureOnCommitCallbacks(execute=True):
+                        revisar_recordatorios()
+
+        self.assertEqual(Mensaje.objects.filter(automatico=True).count(), 2)
+        webpush.assert_called_once()

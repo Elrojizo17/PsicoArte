@@ -38,6 +38,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
+from .push import send_message_push as _send_message_push
 from .serializers import (
     AlumnoClaseSerializer,
     AlumnoSerializer,
@@ -292,41 +293,6 @@ class MensajeViewSet(viewsets.ModelViewSet):
             # is best effort; clients also refresh the conversation over HTTP.
             logger.exception('WebSocket message dispatch failed conversation_id=%s message_id=%s', conversation.id, message.id)
         _send_message_push(message)
-
-
-def _send_message_push(message):
-    """Deliver a best-effort Web Push notification to the other participant."""
-    from django.conf import settings
-    from .models import PushSubscription
-    if not (settings.VAPID_PUBLIC_KEY and settings.VAPID_PRIVATE_KEY and settings.VAPID_ADMIN_EMAIL):
-        return
-    parent_user_id = message.conversacion.acudiente.usuario_id
-    # Staff messages go to the parent; parent messages are notified to staff subscriptions.
-    if parent_user_id and message.remitente_id == parent_user_id:
-        from django.contrib.auth.models import User
-        recipient_ids = User.objects.filter(groups__name__in=['Psicologia', 'Musical']).values_list('id', flat=True).distinct()
-        subscriptions = PushSubscription.objects.filter(usuario_id__in=recipient_ids)
-    else:
-        subscriptions = PushSubscription.objects.filter(usuario_id=parent_user_id) if parent_user_id else PushSubscription.objects.none()
-    try:
-        from pywebpush import WebPushException, webpush
-        import json
-        payload = json.dumps({'title': 'PsicoArte - Mensajes', 'body': (message.cuerpo or 'Te enviaron un archivo')[:140], 'url': '/mensajeria/'})
-        for subscription in subscriptions:
-            try:
-                webpush(
-                    subscription_info={'endpoint': subscription.endpoint, 'keys': {'p256dh': subscription.p256dh, 'auth': subscription.auth}},
-                    data=payload,
-                    vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                    vapid_claims={'sub': f'mailto:{settings.VAPID_ADMIN_EMAIL}'},
-                )
-            except WebPushException as exc:
-                if getattr(exc.response, 'status_code', None) in (404, 410):
-                    subscription.delete()
-                else:
-                    logger.warning('Web Push delivery failed subscription_id=%s: %s', subscription.pk, exc)
-    except Exception:
-        logger.exception('Web Push setup or delivery failed message_id=%s', message.pk)
 
 
 class BroadcastMessageSerializer(serializers.Serializer):

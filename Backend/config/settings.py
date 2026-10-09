@@ -114,6 +114,14 @@ else:
         'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'},
     }
 
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_ADMIN_EMAIL = os.getenv("VAPID_ADMIN_EMAIL", "")
+
+_email = VAPID_ADMIN_EMAIL.strip()
+VAPID_CLAIMS = {
+    "sub": _email if _email.startswith("mailto:") else f"mailto:{_email}"
+}
 
 LOGGING = {
        "version": 1,

@@ -7,7 +7,7 @@ import { Field, RequiredFieldsNotice, SelectField, showRequiredFieldMessage } fr
 import { ErrorState, LoadingState } from '../components/Feedback'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { api, endpoints } from '../services/api'
+import { api, endpoints, getApiErrorMessage } from '../services/api'
 import { confirmAction, showSuccess } from '../services/alerts'
 import type { Alumno, Asistencia, Clase, Jornada } from '../types'
 
@@ -194,8 +194,8 @@ export function ClasesPage() {
       setJornadas(journeyResponse.data)
       setStudents(studentResponse.data)
       setAttendances(attendanceResponse.data)
-    } catch {
-      setError('No se pudo cargar el calendario. Verifica que el backend esté activo.')
+    } catch (reason) {
+      setError(getApiErrorMessage(reason, 'No se pudo cargar el calendario.'))
     } finally {
       setLoading(false)
     }

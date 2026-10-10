@@ -5,7 +5,7 @@ import { Field, RequiredFieldsNotice, SelectField, requiredFieldMessage, showReq
 import { ErrorState, LoadingState } from '../components/Feedback'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { api, endpoints } from '../services/api'
+import { api, endpoints, getApiErrorMessage } from '../services/api'
 import { confirmAction, showSuccess } from '../services/alerts'
 import type { Acudiente, Alumno } from '../types'
 
@@ -47,8 +47,8 @@ export function AcudientesPage() {
       ])
       setItems(guardians)
       setStudents(studentData)
-    } catch {
-      setError('No se pudieron cargar acudientes y estudiantes. Verifica que Django esté activo.')
+    } catch (reason) {
+      setError(getApiErrorMessage(reason, 'No se pudieron cargar acudientes y estudiantes.'))
     } finally {
       setLoading(false)
     }

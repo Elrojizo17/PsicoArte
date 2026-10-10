@@ -4,7 +4,7 @@ import { ErrorState, LoadingState } from '../components/Feedback'
 import { Field, RequiredFieldsNotice, SelectField, showRequiredFieldMessage } from '../components/Field'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
-import { api, endpoints } from '../services/api'
+import { api, endpoints, getApiErrorMessage } from '../services/api'
 import { confirmAction, showSuccess } from '../services/alerts'
 import type { Alumno, AlumnoSummary, Jornada, PlantillaClase } from '../types'
 
@@ -211,7 +211,7 @@ export function PlantillasClasesPage() {
       setJornadas(journeyResponse.data)
       setStudents(studentResponse.data)
       setManaging((current) => current ? templateResponse.data.find((item) => item.id_plantilla === current.id_plantilla) || null : null)
-    } catch { setError('No se pudieron cargar las plantillas. Verifica que el backend esté activo.') } finally { setLoading(false) }
+    } catch (reason) { setError(getApiErrorMessage(reason, 'No se pudieron cargar las plantillas.')) } finally { setLoading(false) }
   }
 
   useEffect(() => { void load() }, [])

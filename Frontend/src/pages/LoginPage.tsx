@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import axios from 'axios'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { api } from '../services/api'
+import { api, getApiErrorMessage } from '../services/api'
 import './LoginPage.css'
 
 type LoginResponse = {
@@ -18,6 +18,15 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [notice] = useState(() => {
+    const loginNotice = sessionStorage.getItem('loginNotice')
+    sessionStorage.removeItem('loginNotice')
+    return loginNotice || (
+      window.matchMedia('(display-mode: standalone)').matches
+        ? 'Inicia sesión para usar la app instalada'
+        : ''
+    )
+  })
 
   if (localStorage.getItem('token')) {
     return <Navigate to={localStorage.getItem('tipo') === 'acudiente' ? '/perfil-padre' : '/clases'} replace />
@@ -37,7 +46,7 @@ export function LoginPage() {
     } catch (reason) {
       setError(axios.isAxiosError(reason) && reason.response?.status === 401
         ? 'Usuario o contraseña incorrectos.'
-        : 'No se pudo iniciar sesión. Inténtalo de nuevo.')
+        : getApiErrorMessage(reason, 'No se pudo iniciar sesión. Inténtalo de nuevo.'))
     } finally {
       setLoading(false)
     }
@@ -69,6 +78,7 @@ export function LoginPage() {
           <div className="login-header">
             <h2 id="login-title">¡Bienvenido!</h2>
             <p className="login-intro">Ingresa tus datos para acceder a tu cuenta.</p>
+            {notice && <p className="login-intro" role="status">{notice}</p>}
           </div>
 
           <form className="login-form" onSubmit={handleSubmit}>

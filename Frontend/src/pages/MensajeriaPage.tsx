@@ -11,6 +11,62 @@ const formatTime = (value: string) => new Intl.DateTimeFormat('es-CO', { hour: '
 const formatDay = (value: string) => new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' }).format(new Date(value))
 type PendingMessage = { localId: number; conversationId: number; cuerpo: string; archivo: File | null; status: 'sending' | 'failed' }
 
+function sameMessage(left: Mensaje | null, right: Mensaje | null) {
+  return left === right || (!!left && !!right && left.id === right.id
+    && left.conversacion === right.conversacion
+    && left.remitente_id === right.remitente_id
+    && left.remitente_nombre === right.remitente_nombre
+    && left.es_propio === right.es_propio
+    && left.cuerpo === right.cuerpo
+    && left.archivo === right.archivo
+    && left.archivo_url === right.archivo_url
+    && left.creado_en === right.creado_en
+    && left.automatico === right.automatico
+    && left.leido_por_acudiente === right.leido_por_acudiente
+    && left.leido_por_personal === right.leido_por_personal)
+}
+
+function sameConversation(left: Conversacion, right: Conversacion) {
+  return left.id === right.id
+    && left.acudiente === right.acudiente
+    && left.acudiente_nombre === right.acudiente_nombre
+    && left.creada_en === right.creada_en
+    && left.activa === right.activa
+    && left.no_leidos === right.no_leidos
+    && sameMessage(left.ultimo_mensaje, right.ultimo_mensaje)
+}
+
+function compareActivity(left: Conversacion, right: Conversacion) {
+  if (!left.ultimo_mensaje) return right.ultimo_mensaje ? 1 : right.id - left.id
+  if (!right.ultimo_mensaje) return -1
+  const dateDifference = Date.parse(right.ultimo_mensaje.creado_en) - Date.parse(left.ultimo_mensaje.creado_en)
+  return dateDifference || right.id - left.id
+}
+
+function mergeConversations(current: Conversacion[], incoming: Conversacion[], selectedId?: number | null) {
+  const currentById = new Map(current.map(item => [item.id, item]))
+  const merged = incoming.map(item => {
+    const existing = currentById.get(item.id)
+    if (!existing) return item
+    const existingMessage = existing.ultimo_mensaje
+    const incomingMessage = item.ultimo_mensaje
+    const existingIsNewer = existingMessage && (!incomingMessage
+      || Date.parse(existingMessage.creado_en) > Date.parse(incomingMessage.creado_en)
+      || (existingMessage.creado_en === incomingMessage.creado_en && existingMessage.id > incomingMessage.id))
+    const candidate = existingIsNewer
+      ? { ...item, ultimo_mensaje: existingMessage, no_leidos: existing.no_leidos }
+      : item
+    const selectedCandidate = candidate.id === selectedId && candidate.no_leidos > 0
+      ? { ...candidate, no_leidos: 0 }
+      : candidate
+    return sameConversation(existing, selectedCandidate) ? existing : selectedCandidate
+  }).sort(compareActivity)
+
+  return merged.length === current.length && merged.every((item, index) => item === current[index])
+    ? current
+    : merged
+}
+
 function BroadcastComposer({ conversations, jornadas }: { conversations: Conversacion[]; jornadas: Jornada[] }) {
   const [audience, setAudience] = useState<'general' | 'jornada' | 'acudientes'>('general')
   const [jornada, setJornada] = useState('')
@@ -93,20 +149,66 @@ export function MensajeriaPage() {
   const [jornadas, setJornadas] = useState<Jornada[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const socketRef = useRef<WebSocket | null>(null)
+  const selectedConversationIdRef = useRef<number | null>(null)
+  const inboxMessageHandlerRef = useRef<(message: Mensaje) => void>(() => {})
   const isParent = localStorage.getItem('tipo') === 'acudiente'
 
   const loadConversations = async (silent = false) => {
     try {
       if (!silent) { setLoading(true); setError('') }
       const response = await api.get<Conversacion[]>(endpoints.conversaciones)
-      setConversations(response.data)
-      setSelected(current => current ? response.data.find(item => item.id === current.id) || response.data[0] || null : response.data[0] || null)
+      const selectedId = selectedConversationIdRef.current
+      const selectedInResponse = response.data.some(item => item.id === selectedId)
+      const conversationToOpen = selectedInResponse ? selectedId : response.data[0]?.id
+      setConversations(current => mergeConversations(current, response.data, conversationToOpen))
+      setSelected(current => {
+        const next = response.data.find(item => item.id === (current && selectedInResponse ? current.id : conversationToOpen))
+        if (!current) return response.data[0] || null
+        if (!next) return response.data[0] || null
+        return sameConversation(current, next) ? current : next
+      })
     } catch { if (!silent) setError('No se pudieron cargar las conversaciones.') }
     finally { if (!silent) setLoading(false) }
   }
 
+  useEffect(() => {
+    const selectedId = selected?.id ?? null
+    selectedConversationIdRef.current = selectedId
+    inboxMessageHandlerRef.current = message => {
+      const isOpen = selectedId === message.conversacion
+      setMessages(current => current.some(item => item.id === message.id) || !isOpen
+        ? current
+        : [...current, message])
+      setConversations(current => {
+        const conversation = current.find(item => item.id === message.conversacion)
+        if (!conversation) return current
+        const previousMessage = conversation.ultimo_mensaje
+        if (previousMessage && (previousMessage.id === message.id
+          || Date.parse(previousMessage.creado_en) > Date.parse(message.creado_en)
+          || (previousMessage.creado_en === message.creado_en && previousMessage.id > message.id))) return current
+        const updated = {
+          ...conversation,
+          ultimo_mensaje: message,
+          no_leidos: isOpen ? 0 : message.es_propio ? conversation.no_leidos : conversation.no_leidos + 1,
+        }
+        return [updated, ...current.filter(item => item.id !== message.conversacion)]
+      })
+    }
+  }, [selected?.id])
+
   useEffect(() => { void loadConversations() }, [])
   useEffect(() => { if (!isParent) void api.get<Jornada[]>(endpoints.jornadas).then(({ data }) => setJornadas(data)).catch(() => {}) }, [isParent])
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    const socketUrl = `${socketOrigin}/ws/mensajeria/?token=${encodeURIComponent(token || '')}`
+    const socket = new WebSocket(socketUrl)
+    socket.onmessage = event => {
+      const message = JSON.parse(event.data) as Mensaje
+      inboxMessageHandlerRef.current(message)
+    }
+    return () => socket.close()
+  }, [])
 
   useEffect(() => {
     if (!selected) return
@@ -131,8 +233,7 @@ export function MensajeriaPage() {
       }
       const message = payload as Mensaje
       console.log('[PsicoArte messaging] WebSocket message received', { conversationId: selected.id, messageId: message.id, own: message.es_propio })
-      setMessages(current => current.some(item => item.id === message.id) ? current : [...current, message])
-      setConversations(current => current.map(item => item.id === selected.id ? { ...item, no_leidos: 0, ultimo_mensaje: message } : item))
+      inboxMessageHandlerRef.current(message)
     }
     socketRef.current = socket
     const refresh = window.setInterval(async () => {
@@ -173,7 +274,8 @@ export function MensajeriaPage() {
     if (pending.cuerpo) formData.append('cuerpo', pending.cuerpo)
     if (pending.archivo) formData.append('archivo_upload', pending.archivo)
     try {
-      await api.post(endpoints.mensajes, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const { data: message } = await api.post<Mensaje>(endpoints.mensajes, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      inboxMessageHandlerRef.current(message)
       setPendingMessages(current => current.filter(item => item.localId !== pending.localId))
       try {
         const response = await api.get<Mensaje[]>(`${endpoints.mensajes}?conversacion=${pending.conversationId}`)
@@ -194,5 +296,5 @@ export function MensajeriaPage() {
     void transmit(pending)
   }
 
-  return <section className="page-enter flex min-h-[calc(100dvh-2rem)] flex-col overflow-hidden lg:h-[calc(100dvh-4rem)] lg:min-h-0"><PageHeader title={'Mensajer\u00eda'} description={isParent ? 'Comunícate directamente con PsicoArte.' : 'Gestiona las conversaciones con los acudientes.'} />{!isParent && <BroadcastComposer conversations={conversations} jornadas={jornadas}/ >}{error && <div className="mb-4"><ErrorState message={error}/></div>}{loading ? <LoadingState/> : <div className="grid h-[calc(100dvh-11rem)] min-h-[28rem] overflow-hidden rounded-2xl border border-primary-light/70 bg-white shadow-sm lg:min-h-0 lg:flex-1 lg:grid-cols-[290px_1fr]"> <aside className={`${mobileView === 'conversation' ? 'hidden' : 'block'} min-h-0 overflow-y-auto border-primary-light/50 bg-background/45 p-3 lg:block lg:border-r lg:p-4`}><div className="mb-3 flex items-center gap-2 px-1"><MessageCircle size={20} className="text-primary"/><h2 className="font-bold text-primary-dark">Conversaciones</h2></div>{!isParent && <label className="relative mb-3 block"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar Acudiente" className="w-full rounded-lg border border-border bg-white py-2.5 pl-9 pr-2 text-sm outline-none focus:border-primary"/></label>}<div className="grid gap-2">{visibleConversations.length === 0 ? <p className="p-3 text-sm text-slate-500">No hay conversaciones.</p> : visibleConversations.map(item => <button type="button" key={item.id} onClick={() => { setSelected(item); setMobileView('conversation') }} className={`rounded-xl p-3 text-left transition ${selected?.id === item.id ? 'bg-primary-dark text-white' : 'bg-white hover:bg-primary/10'}`}><div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-bold">{isParent ? 'PsicoArte' : item.acudiente_nombre}</p>{item.no_leidos > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected?.id === item.id ? 'bg-white text-primary-dark' : 'bg-primary text-white'}`}>{item.no_leidos}</span>}</div><p className={`mt-1 truncate text-xs ${selected?.id === item.id ? 'text-white/75' : 'text-slate-500'}`}>{item.ultimo_mensaje?.cuerpo || (item.ultimo_mensaje ? 'Archivo adjunto' : 'Sin mensajes todavía')}</p></button>)}</div></aside><div className={`${mobileView === 'list' ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-col lg:flex`}>{selected ? <><header className="flex items-center gap-3 border-b border-border px-3 py-3 sm:px-5 sm:py-4"><button type="button" onClick={() => setMobileView('list')} className="rounded-full p-2 text-primary hover:bg-background lg:hidden" aria-label="Volver a conversaciones"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="truncate text-base font-bold text-primary-dark sm:text-lg">{isParent ? 'PsicoArte' : selected.acudiente_nombre}</h2></div></header><div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f8faf7] p-3 sm:p-4">{messagesLoading ? <LoadingState/> : messages.length === 0 ? <div className="flex h-full min-h-72 items-center justify-center text-center text-sm text-slate-500">Aún no hay mensajes.<br/>Inicia la conversación.</div> : messages.map(message => <div key={message.id} className={`flex ${message.es_propio ? 'justify-end' : 'justify-start'}`}><article className={`max-w-[88%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[85%] sm:px-4 sm:py-3 ${message.es_propio ? 'rounded-br-sm bg-primary-dark text-white' : 'rounded-bl-sm border border-border bg-white text-ink'}`}><p className={`mb-1 text-[10px] font-bold uppercase tracking-wide ${message.es_propio ? 'text-white/70' : 'text-primary'}`}>{message.es_propio ? 'Tú' : message.remitente_nombre} · {formatDay(message.creado_en)} {formatTime(message.creado_en)}</p>{message.cuerpo && <p className="whitespace-pre-wrap break-words text-sm">{message.cuerpo}</p>}{message.archivo_url && <AttachmentPreview url={message.archivo_url} name={message.archivo || 'Archivo adjunto'} own={message.es_propio}/>}<p className="mt-2 flex min-h-4 justify-end">{message.es_propio && ((isParent ? message.leido_por_personal : message.leido_por_acudiente) ? <CheckCheck size={14} className="text-sky-300" aria-label="Leído"/> : <Check size={14} className="text-white/70" aria-label="Enviado"/>)}</p></article></div>)}{pendingMessages.filter(item => item.conversationId === selected.id).map(item => <div key={item.localId} className="flex justify-end"><article className="max-w-[88%] rounded-2xl rounded-br-sm bg-primary-dark/80 px-3 py-2.5 text-white shadow-sm sm:max-w-[85%] sm:px-4 sm:py-3"><p className="whitespace-pre-wrap break-words text-sm">{item.cuerpo || item.archivo?.name || 'Adjunto'}</p><p className="mt-2 flex items-center justify-end gap-1 text-white/75">{item.status === 'sending' ? <><Clock3 size={13}/><span className="text-[10px]">Enviando</span></> : <><AlertCircle size={14} className="text-red-200"/><span className="text-[10px]">No enviado</span><button type="button" onClick={() => void transmit(item)} aria-label="Reintentar envío" title="Reintentar" className="ml-1 rounded p-1 hover:bg-white/15"><RotateCw size={14}/></button></>}</p></article></div>)}<div ref={bottomRef}/></div><form onSubmit={send} className="border-t border-border bg-white p-2.5 sm:p-4"><div className="flex items-end gap-1.5 sm:gap-2"><label className="cursor-pointer rounded-lg p-2 text-primary hover:bg-background" aria-label="Adjuntar archivo"><Paperclip size={19}/><input type="file" className="hidden" onChange={event => setFile(event.target.files?.[0] || null)}/></label><textarea value={body} onChange={event => setBody(event.target.value)} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} onCopy={event => event.stopPropagation()} onCut={event => event.stopPropagation()} onPaste={event => event.stopPropagation()} placeholder="Escribe un mensaje..." className="min-w-0 flex-1 resize-none rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-primary"/><button type="submit" aria-label="Enviar mensaje" disabled={sending} className="rounded-xl bg-primary p-3 text-white hover:bg-primary-dark disabled:opacity-60"><Send size={18}/></button></div>{file && <p className="mt-2 flex min-w-0 items-center gap-2 text-xs text-slate-500"><span className="truncate">{file.name}</span><button type="button" onClick={() => setFile(null)} aria-label="Quitar archivo"><X size={14}/></button></p>}</form></> : <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-slate-500">Selecciona una conversación para comenzar.</div>}</div></div>}</section>
+  return <section className="page-enter flex min-h-[calc(100dvh-2rem)] flex-col overflow-hidden lg:h-[calc(100dvh-4rem)] lg:min-h-0"><PageHeader title={'Mensajer\u00eda'} description={isParent ? 'Comunícate directamente con PsicoArte.' : 'Gestiona las conversaciones con los acudientes.'} />{!isParent && <BroadcastComposer conversations={conversations} jornadas={jornadas}/ >}{error && <div className="mb-4"><ErrorState message={error}/></div>}{loading ? <LoadingState/> : <div className="grid h-[calc(100dvh-11rem)] min-h-[28rem] overflow-hidden rounded-2xl border border-primary-light/70 bg-white shadow-sm lg:min-h-0 lg:flex-1 lg:grid-cols-[290px_1fr]"> <aside className={`${mobileView === 'conversation' ? 'hidden' : 'block'} min-h-0 overflow-y-auto border-primary-light/50 bg-background/45 p-3 lg:block lg:border-r lg:p-4`}><div className="mb-3 flex items-center gap-2 px-1"><MessageCircle size={20} className="text-primary"/><h2 className="font-bold text-primary-dark">Conversaciones</h2></div>{!isParent && <label className="relative mb-3 block"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar Acudiente" className="w-full rounded-lg border border-border bg-white py-2.5 pl-9 pr-2 text-sm outline-none focus:border-primary"/></label>}<div className="grid gap-2">{visibleConversations.length === 0 ? <p className="p-3 text-sm text-slate-500">No hay conversaciones.</p> : visibleConversations.map(item => <button type="button" key={item.id} onClick={() => { setSelected(item); setConversations(current => current.map(conversation => conversation.id === item.id && conversation.no_leidos > 0 ? { ...conversation, no_leidos: 0 } : conversation)); setMobileView('conversation') }} className={`rounded-xl p-3 text-left transition ${selected?.id === item.id ? 'bg-primary-dark text-white' : 'bg-white hover:bg-primary/10'}`}><div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-bold">{isParent ? 'PsicoArte' : item.acudiente_nombre}</p><span className="flex shrink-0 items-center gap-2">{item.ultimo_mensaje && <time className={`text-[10px] ${selected?.id === item.id ? 'text-white/65' : 'text-slate-400'}`}>{formatTime(item.ultimo_mensaje.creado_en)}</time>}{item.no_leidos > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selected?.id === item.id ? 'bg-white text-primary-dark' : 'bg-primary text-white'}`}>{item.no_leidos}</span>}</span></div><p className={`mt-1 truncate text-xs ${selected?.id === item.id ? 'text-white/75' : 'text-slate-500'}`}>{item.ultimo_mensaje?.cuerpo || (item.ultimo_mensaje ? 'Archivo adjunto' : 'Sin mensajes todavía')}</p></button>)}</div></aside><div className={`${mobileView === 'list' ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-col lg:flex`}>{selected ? <><header className="flex items-center gap-3 border-b border-border px-3 py-3 sm:px-5 sm:py-4"><button type="button" onClick={() => setMobileView('list')} className="rounded-full p-2 text-primary hover:bg-background lg:hidden" aria-label="Volver a conversaciones"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="truncate text-base font-bold text-primary-dark sm:text-lg">{isParent ? 'PsicoArte' : selected.acudiente_nombre}</h2></div></header><div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-[#f8faf7] p-3 sm:p-4">{messagesLoading ? <LoadingState/> : messages.length === 0 ? <div className="flex h-full min-h-72 items-center justify-center text-center text-sm text-slate-500">Aún no hay mensajes.<br/>Inicia la conversación.</div> : messages.map(message => <div key={message.id} className={`flex ${message.es_propio ? 'justify-end' : 'justify-start'}`}><article className={`max-w-[88%] rounded-2xl px-3 py-2.5 shadow-sm sm:max-w-[85%] sm:px-4 sm:py-3 ${message.es_propio ? 'rounded-br-sm bg-primary-dark text-white' : 'rounded-bl-sm border border-border bg-white text-ink'}`}><p className={`mb-1 text-[10px] font-bold uppercase tracking-wide ${message.es_propio ? 'text-white/70' : 'text-primary'}`}>{message.es_propio ? 'Tú' : message.remitente_nombre} · {formatDay(message.creado_en)} {formatTime(message.creado_en)}</p>{message.cuerpo && <p className="whitespace-pre-wrap break-words text-sm">{message.cuerpo}</p>}{message.archivo_url && <AttachmentPreview url={message.archivo_url} name={message.archivo || 'Archivo adjunto'} own={message.es_propio}/>}<p className="mt-2 flex min-h-4 justify-end">{message.es_propio && ((isParent ? message.leido_por_personal : message.leido_por_acudiente) ? <CheckCheck size={14} className="text-sky-300" aria-label="Leído"/> : <Check size={14} className="text-white/70" aria-label="Enviado"/>)}</p></article></div>)}{pendingMessages.filter(item => item.conversationId === selected.id).map(item => <div key={item.localId} className="flex justify-end"><article className="max-w-[88%] rounded-2xl rounded-br-sm bg-primary-dark/80 px-3 py-2.5 text-white shadow-sm sm:max-w-[85%] sm:px-4 sm:py-3"><p className="whitespace-pre-wrap break-words text-sm">{item.cuerpo || item.archivo?.name || 'Adjunto'}</p><p className="mt-2 flex items-center justify-end gap-1 text-white/75">{item.status === 'sending' ? <><Clock3 size={13}/><span className="text-[10px]">Enviando</span></> : <><AlertCircle size={14} className="text-red-200"/><span className="text-[10px]">No enviado</span><button type="button" onClick={() => void transmit(item)} aria-label="Reintentar envío" title="Reintentar" className="ml-1 rounded p-1 hover:bg-white/15"><RotateCw size={14}/></button></>}</p></article></div>)}<div ref={bottomRef}/></div><form onSubmit={send} className="border-t border-border bg-white p-2.5 sm:p-4"><div className="flex items-end gap-1.5 sm:gap-2"><label className="cursor-pointer rounded-lg p-2 text-primary hover:bg-background" aria-label="Adjuntar archivo"><Paperclip size={19}/><input type="file" className="hidden" onChange={event => setFile(event.target.files?.[0] || null)}/></label><textarea value={body} onChange={event => setBody(event.target.value)} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit() } }} onCopy={event => event.stopPropagation()} onCut={event => event.stopPropagation()} onPaste={event => event.stopPropagation()} placeholder="Escribe un mensaje..." className="min-w-0 flex-1 resize-none rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-primary"/><button type="submit" aria-label="Enviar mensaje" disabled={sending} className="rounded-xl bg-primary p-3 text-white hover:bg-primary-dark disabled:opacity-60"><Send size={18}/></button></div>{file && <p className="mt-2 flex min-w-0 items-center gap-2 text-xs text-slate-500"><span className="truncate">{file.name}</span><button type="button" onClick={() => setFile(null)} aria-label="Quitar archivo"><X size={14}/></button></p>}</form></> : <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-slate-500">Selecciona una conversación para comenzar.</div>}</div></div>}</section>
 }

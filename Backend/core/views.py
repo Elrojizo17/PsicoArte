@@ -5,7 +5,7 @@ from pathlib import Path
 from django.http import FileResponse
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
-from django.db.models import Q
+from django.db.models import F, Max, Q
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
 from rest_framework.exceptions import PermissionDenied
@@ -35,6 +35,7 @@ from .models import (
     PlantillaClaseAlumno,
     PlantillaMensaje,
 )
+from .messaging import dispatch_message
 
 logger = logging.getLogger(__name__)
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
@@ -213,7 +214,9 @@ class ConversacionViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().annotate(
+            ultimo_mensaje_en=Max('mensajes__creado_en'),
+        ).order_by(F('ultimo_mensaje_en').desc(nulls_last=True), '-id')
         user = self.request.user
         if user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
             for guardian in Acudiente.objects.all():
@@ -286,12 +289,7 @@ class MensajeViewSet(viewsets.ModelViewSet):
         message = serializer.save(remitente=self.request.user)
         payload = MensajeSerializer(message, context={'request': self.request}).data
         logger.info('Dispatching WebSocket message event conversation_id=%s message_id=%s sender_user_id=%s', conversation.id, message.id, self.request.user.id)
-        try:
-            async_to_sync(get_channel_layer().group_send)(f'mensajeria_{conversation.id}', {'type': 'message_created', 'message': payload})
-        except Exception:
-            # The message and attachment are already persisted. Realtime delivery
-            # is best effort; clients also refresh the conversation over HTTP.
-            logger.exception('WebSocket message dispatch failed conversation_id=%s message_id=%s', conversation.id, message.id)
+        dispatch_message(message, payload)
         _send_message_push(message)
 
 
@@ -322,10 +320,7 @@ def mensaje_masivo_view(request):
         conversation, _ = Conversacion.objects.get_or_create(acudiente=guardian)
         message = Mensaje.objects.create(conversacion=conversation, remitente=request.user, cuerpo=data['cuerpo'])
         payload = MensajeSerializer(message, context={'request': request}).data
-        try:
-            async_to_sync(get_channel_layer().group_send)(f'mensajeria_{conversation.id}', {'type': 'message_created', 'message': payload})
-        except Exception:
-            logger.exception('WebSocket broadcast dispatch failed conversation_id=%s', conversation.id)
+        dispatch_message(message, payload)
         _send_message_push(message)
         sent += 1
     return Response({'enviados': sent}, status=status.HTTP_200_OK)

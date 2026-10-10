@@ -456,7 +456,7 @@ class ConversacionSerializer(serializers.ModelSerializer):
         return f'{obj.acudiente.nombre_1} {obj.acudiente.apellido_1}'
 
     def get_ultimo_mensaje(self, obj):
-        message = obj.mensajes.order_by('-creado_en').first()
+        message = obj.mensajes.order_by('-creado_en', '-id').first()
         return MensajeSerializer(message, context=self.context).data if message else None
 
     def get_no_leidos(self, obj):

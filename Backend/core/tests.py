@@ -3,7 +3,7 @@ import sys
 from types import ModuleType
 from unittest.mock import Mock, patch
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -16,6 +16,7 @@ from .models import (
     Asistencia,
     Acudiente,
     ClaseProgramada,
+    Conversacion,
     Jornada,
     Mensaje,
     Pago,
@@ -138,6 +139,68 @@ class ApiCrudTests(APITestCase):
         self.assertEqual(len(detail['clases_consumidas']), 2)
         self.assertEqual(detail['clases_disponibles'], 1)
         self.assertEqual(detail['clases_cubiertas'], [date(2026, 9, 23), date(2026, 9, 24)])
+
+
+class ConversationOrderingApiTests(APITestCase):
+    def test_conversations_sort_by_latest_message_and_include_preview_and_unread_count(self):
+        staff = User.objects.create_user(username='messaging-staff', password='test-password')
+        sender = User.objects.create_user(username='messaging-sender', password='test-password')
+        staff.groups.add(Group.objects.get_or_create(name='Psicologia')[0])
+        conversations = []
+        for number in range(4):
+            guardian = Acudiente.objects.create(
+                numero_documento=f'conversation-{number}',
+                nombre_1=f'Guardian {number}',
+                apellido_1='Test',
+                telefono_1='3000000000',
+            )
+            conversations.append(Conversacion.objects.create(acudiente=guardian))
+
+        older = timezone.make_aware(datetime(2026, 1, 1, 10, 0))
+        recent = timezone.make_aware(datetime(2026, 1, 2, 10, 0))
+        first_message = Mensaje.objects.create(
+            conversacion=conversations[1],
+            remitente=sender,
+            cuerpo='Mensaje anterior',
+        )
+        first_message.creado_en = older
+        first_message.save(update_fields=['creado_en'])
+        latest_message = Mensaje.objects.create(
+            conversacion=conversations[1],
+            remitente=sender,
+            cuerpo='Vista previa reciente',
+        )
+        latest_message.creado_en = recent
+        latest_message.save(update_fields=['creado_en'])
+        tied_message = Mensaje.objects.create(
+            conversacion=conversations[2],
+            remitente=sender,
+            cuerpo='Mismo instante',
+        )
+        tied_message.creado_en = recent
+        tied_message.save(update_fields=['creado_en'])
+        older_message = Mensaje.objects.create(
+            conversacion=conversations[0],
+            remitente=sender,
+            cuerpo='Mensaje antiguo',
+        )
+        older_message.creado_en = older
+        older_message.save(update_fields=['creado_en'])
+
+        self.client.force_authenticate(staff)
+        response = self.client.get(reverse('conversacion-list'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data
+        self.assertEqual(
+            [item['id'] for item in results],
+            [conversations[2].id, conversations[1].id, conversations[0].id, conversations[3].id],
+        )
+        preview = next(item for item in results if item['id'] == conversations[1].id)
+        self.assertEqual(preview['ultimo_mensaje']['cuerpo'], 'Vista previa reciente')
+        self.assertEqual(preview['ultimo_mensaje']['creado_en'], latest_message.creado_en.isoformat())
+        self.assertEqual(preview['ultimo_mensaje']['remitente_id'], sender.id)
+        self.assertEqual(preview['no_leidos'], 2)
 
 
 class PushSubscriptionApiTests(APITestCase):

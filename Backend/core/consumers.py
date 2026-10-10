@@ -5,7 +5,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from rest_framework.authtoken.models import Token
 
-from .models import Conversacion
+from .models import Acudiente, Conversacion
 
 logger = logging.getLogger(__name__)
 
@@ -68,3 +68,51 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
             conversation.mensajes.filter(leido_por_acudiente=False).update(leido_por_acudiente=True)
         elif self.user.groups.filter(name__in=['Psicologia', 'Musical']).exists():
             conversation.mensajes.filter(leido_por_personal=False).update(leido_por_personal=True)
+
+
+class MessagingInboxConsumer(AsyncJsonWebsocketConsumer):
+    async def connect(self):
+        token = parse_qs(self.scope['query_string'].decode()).get('token', [None])[0]
+        self.user = await self.get_user(token)
+        if not self.user or not await self.can_access_inbox():
+            logger.warning('Messaging inbox WebSocket rejected authenticated=%s', bool(self.user))
+            await self.close(code=4401)
+            return
+
+        self.groups = [f'mensajeria_usuario_{self.user.id}']
+        if await self.is_staff():
+            self.groups.append('mensajeria_personal')
+        for group in self.groups:
+            await self.channel_layer.group_add(group, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        for group in getattr(self, 'groups', []):
+            await self.channel_layer.group_discard(group, self.channel_name)
+
+    async def message_created(self, event):
+        message = {
+            **event['message'],
+            'es_propio': event['message']['remitente_id'] == self.user.id,
+        }
+        await self.send_json(message)
+
+    @database_sync_to_async
+    def get_user(self, token_key):
+        if not token_key:
+            return None
+        try:
+            return Token.objects.select_related('user').get(key=token_key).user
+        except Token.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def can_access_inbox(self):
+        return (
+            self.user.groups.filter(name__in=['Psicologia', 'Musical']).exists()
+            or Acudiente.objects.filter(usuario_id=self.user.id).exists()
+        )
+
+    @database_sync_to_async
+    def is_staff(self):
+        return self.user.groups.filter(name__in=['Psicologia', 'Musical']).exists()

@@ -54,15 +54,29 @@ def send_message_push(message):
             )
         except WebPushException as exc:
             failed += 1
-            logger.exception('Web Push delivery failed subscription_id=%s', subscription.pk)
-            if getattr(exc.response, 'status_code', None) in (404, 410):
+            status_code = getattr(getattr(exc, 'response', None), 'status_code', None)
+            logger.warning(
+                'Web Push delivery failed status=%s user_id=%s subscription_id=%s endpoint_suffix=%s',
+                status_code,
+                subscription.usuario_id,
+                subscription.pk,
+                subscription.endpoint[-12:],
+            )
+            if status_code in (400, 401, 403, 404, 410):
                 try:
                     subscription.delete()
                 except Exception:
                     logger.exception('Could not delete expired push subscription_id=%s', subscription.pk)
-        except Exception:
+        except Exception as exc:
             failed += 1
-            logger.exception('Web Push delivery failed subscription_id=%s', subscription.pk)
+            logger.warning(
+                'Web Push delivery failed status=%s user_id=%s subscription_id=%s endpoint_suffix=%s error_type=%s',
+                getattr(exc, 'status_code', None),
+                subscription.usuario_id,
+                subscription.pk,
+                subscription.endpoint[-12:],
+                type(exc).__name__,
+            )
         else:
             sent += 1
 

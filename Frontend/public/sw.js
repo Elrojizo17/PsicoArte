@@ -63,6 +63,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
   if (url.origin !== self.location.origin) return
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return
+  if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) return
+  if (event.request.headers.get('Upgrade')?.toLowerCase() === 'websocket') return
   if (event.request.headers.has('Authorization')) return
 
   event.respondWith(

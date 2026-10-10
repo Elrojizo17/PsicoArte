@@ -1,6 +1,15 @@
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from django.db import models
+import secrets
+
+
+def generate_session_key():
+    return secrets.token_hex(32)
+
+
+def generate_websocket_ticket():
+    return secrets.token_urlsafe(32)
 
 
 JORNADAS_MUSICALES = (
@@ -397,8 +406,8 @@ class RecordatorioEnviado(models.Model):
 
 
 class PushSubscription(models.Model):
-    usuario = models.ForeignKey(
-        User,
+    sesion = models.ForeignKey(
+        'SesionDispositivo',
         on_delete=models.CASCADE,
         related_name='push_subscriptions',
     )
@@ -414,7 +423,49 @@ class PushSubscription(models.Model):
         ordering = ['-actualizada_en']
 
     def __str__(self):
-        return f'Suscripción push de {self.usuario}'
+        return f'Suscripción push de {self.sesion}'
+
+
+class SesionDispositivo(models.Model):
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sesiones_dispositivo',
+    )
+    dispositivo_id = models.CharField(max_length=64)
+    key = models.CharField(max_length=64, unique=True, default=generate_session_key, editable=False)
+    nombre_dispositivo = models.CharField(max_length=120)
+    creado = models.DateTimeField(auto_now_add=True)
+    ultimo_uso = models.DateTimeField()
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'sesion_dispositivo'
+        ordering = ['-ultimo_uso']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['usuario', 'dispositivo_id'],
+                name='uq_sesion_usuario_dispositivo',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nombre_dispositivo} de {self.usuario}'
+
+
+class TicketWebSocket(models.Model):
+    sesion = models.ForeignKey(
+        SesionDispositivo,
+        on_delete=models.CASCADE,
+        related_name='tickets_websocket',
+    )
+    key = models.CharField(max_length=64, unique=True, default=generate_websocket_ticket, editable=False)
+    creado = models.DateTimeField(auto_now_add=True)
+    expira_en = models.DateTimeField()
+    usado_en = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'ticket_websocket'
 
 
 class Pago(models.Model):

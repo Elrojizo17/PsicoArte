@@ -18,9 +18,15 @@ def send_message_push(message):
         recipient_ids = User.objects.filter(
             groups__name__in=['Psicologia', 'Musical'],
         ).values_list('id', flat=True).distinct()
-        subscriptions = PushSubscription.objects.filter(usuario_id__in=recipient_ids)
+        subscriptions = PushSubscription.objects.filter(
+            sesion__usuario_id__in=recipient_ids,
+            sesion__activo=True,
+        ).select_related('sesion')
     else:
-        subscriptions = PushSubscription.objects.filter(usuario_id=parent_user_id)
+        subscriptions = PushSubscription.objects.filter(
+            sesion__usuario_id=parent_user_id,
+            sesion__activo=True,
+        ).select_related('sesion')
     if not subscriptions.exists():
         return 0, 0
     if not (settings.VAPID_PUBLIC_KEY and settings.VAPID_PRIVATE_KEY and settings.VAPID_ADMIN_EMAIL):
@@ -58,7 +64,7 @@ def send_message_push(message):
             logger.warning(
                 'Web Push delivery failed status=%s user_id=%s subscription_id=%s endpoint_suffix=%s',
                 status_code,
-                subscription.usuario_id,
+                subscription.sesion.usuario_id,
                 subscription.pk,
                 subscription.endpoint[-12:],
             )
@@ -72,7 +78,7 @@ def send_message_push(message):
             logger.warning(
                 'Web Push delivery failed status=%s user_id=%s subscription_id=%s endpoint_suffix=%s error_type=%s',
                 getattr(exc, 'status_code', None),
-                subscription.usuario_id,
+                subscription.sesion.usuario_id,
                 subscription.pk,
                 subscription.endpoint[-12:],
                 type(exc).__name__,

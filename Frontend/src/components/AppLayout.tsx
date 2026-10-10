@@ -1,8 +1,8 @@
-import { CalendarClock, CalendarDays, ClipboardList, CreditCard, FileBadge, HeartHandshake, LogOut, Menu, UsersRound, Settings2, X } from 'lucide-react'
+import { CalendarClock, CalendarDays, ClipboardList, CreditCard, FileBadge, HeartHandshake, LogOut, Menu, Smartphone, UsersRound, Settings2, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
-import { unsubscribePush } from '../services/push'
+import { logoutCurrentSession } from '../services/push'
 
 const baseNavigation = [
   { to: '/acudientes', label: 'Gestionar Acudientes', icon: HeartHandshake },
@@ -11,6 +11,7 @@ const baseNavigation = [
   { to: '/plantillas-clases', label: 'Plantillas de clases', icon: ClipboardList },
   { to: '/pagos', label: 'Pagos', icon: CreditCard },
   { to: '/automatizacion', label: 'Automatización de mensajes', icon: Settings2 },
+  { to: '/dispositivos', label: 'Mis dispositivos', icon: Smartphone },
 ]
 
 export function AppLayout() {
@@ -24,8 +25,9 @@ export function AppLayout() {
     : baseNavigation
 
   async function handleLogout() {
-    await unsubscribePush()
+    await logoutCurrentSession()
     localStorage.removeItem('token')
+    localStorage.removeItem('session_id')
     localStorage.removeItem('tipo')
     localStorage.removeItem('grupo')
     navigate('/login', { replace: true })

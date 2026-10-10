@@ -62,7 +62,7 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        'core.authentication.SesionDispositivoAuthentication',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '5/minute',

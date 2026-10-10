@@ -1,14 +1,15 @@
-import { CalendarDays, ClipboardCheck, CreditCard, LogOut, Menu, UserRound, X } from 'lucide-react'
+import { CalendarDays, ClipboardCheck, CreditCard, LogOut, Menu, Smartphone, UserRound, X } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
-import { unsubscribePush } from '../services/push'
+import { logoutCurrentSession } from '../services/push'
 
 const navigation = [
   { to: '/perfil-padre', label: 'Mis niños', icon: UserRound, end: true },
   { to: '/perfil-padre/calendario', label: 'Calendario', icon: CalendarDays },
   { to: '/perfil-padre/asistencias', label: 'Asistencias', icon: ClipboardCheck },
   { to: '/perfil-padre/pagos', label: 'Mis pagos', icon: CreditCard },
+  { to: '/perfil-padre/dispositivos', label: 'Mis dispositivos', icon: Smartphone },
 ]
 
 export function ParentLayout() {
@@ -17,8 +18,9 @@ export function ParentLayout() {
   const name = localStorage.getItem('nombre') || 'Familia PsicoArte'
 
   const logout = async () => {
-    await unsubscribePush()
+    await logoutCurrentSession()
     localStorage.removeItem('token')
+    localStorage.removeItem('session_id')
     localStorage.removeItem('tipo')
     localStorage.removeItem('grupo')
     localStorage.removeItem('nombre')

@@ -6,10 +6,14 @@ import './LoginPage.css'
 
 type LoginResponse = {
   token: string
+  device_id: string
+  session_id: number
   tipo: 'empresa' | 'acudiente'
   nombre: string
   grupo?: 'Psicologia' | 'Musical'
 }
+
+type ActiveDevice = { id: number; nombre: string; ultimo_uso: string }
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -18,6 +22,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [activeDevices, setActiveDevices] = useState<ActiveDevice[]>([])
   const [notice] = useState(() => {
     const loginNotice = sessionStorage.getItem('loginNotice')
     sessionStorage.removeItem('loginNotice')
@@ -32,24 +37,47 @@ export function LoginPage() {
     return <Navigate to={localStorage.getItem('tipo') === 'acudiente' ? '/perfil-padre' : '/clases'} replace />
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function submitLogin(cerrarSesionId?: number) {
     setError('')
+    setActiveDevices([])
     setLoading(true)
     try {
-      const { data } = await api.post<LoginResponse>('/login/', { username, password })
+      let deviceId = localStorage.getItem('device_id')
+      if (!deviceId) {
+        deviceId = crypto.randomUUID()
+        localStorage.setItem('device_id', deviceId)
+      }
+      const { data } = await api.post<LoginResponse>('/login/', {
+        username,
+        password,
+        device_id: deviceId,
+        ...(cerrarSesionId ? { cerrar_sesion_id: cerrarSesionId } : {}),
+      })
       localStorage.setItem('token', data.token)
+      localStorage.setItem('device_id', data.device_id)
+      localStorage.setItem('session_id', String(data.session_id))
       localStorage.setItem('tipo', data.tipo)
       if (data.grupo) localStorage.setItem('grupo', data.grupo)
       else localStorage.removeItem('grupo')
+      setActiveDevices([])
       navigate(data.tipo === 'acudiente' ? '/perfil-padre' : '/clases', { replace: true })
     } catch (reason) {
+      if (axios.isAxiosError(reason) && reason.response?.status === 409
+        && reason.response.data?.codigo === 'limite_dispositivos') {
+        setActiveDevices(reason.response.data.dispositivos)
+        return
+      }
       setError(axios.isAxiosError(reason) && reason.response?.status === 401
         ? 'Usuario o contraseña incorrectos.'
         : getApiErrorMessage(reason, 'No se pudo iniciar sesión. Inténtalo de nuevo.'))
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await submitLogin()
   }
 
   return (
@@ -127,6 +155,28 @@ export function LoginPage() {
               <div className="login-error" role="alert">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                 <span>{error}</span>
+              </div>
+            )}
+
+            {activeDevices.length > 0 && (
+              <div className="grid gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3" role="alert">
+                <p className="text-sm font-semibold text-amber-900">Ya hay 3 dispositivos activos. Elige uno para cerrar:</p>
+                {activeDevices.map(device => (
+                  <button
+                    key={device.id}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void submitLogin(device.id)}
+                    className="rounded-md border border-amber-300 bg-white px-3 py-2 text-left text-sm text-amber-950 disabled:opacity-50"
+                  >
+                    <span className="block font-semibold">{device.nombre}</span>
+                    <span className="block text-xs">Último uso: {new Date(device.ultimo_uso).toLocaleString()}</span>
+                    <span className="block text-xs font-semibold">Cerrar este dispositivo e iniciar sesión aquí</span>
+                  </button>
+                ))}
+                <button type="button" onClick={() => setActiveDevices([])} className="text-left text-sm text-amber-900 underline">
+                  Cancelar
+                </button>
               </div>
             )}
 

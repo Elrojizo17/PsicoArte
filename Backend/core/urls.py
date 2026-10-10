@@ -17,6 +17,12 @@ from .views import (
     mensaje_masivo_view,
 )
 from .push_views import PushPublicKeyView, PushSubscriptionView
+from .session_views import (
+    DeviceSessionDetailView,
+    DeviceSessionsView,
+    LogoutView,
+    WebSocketTicketView,
+)
 
 from django.urls import path
 
@@ -40,4 +46,8 @@ urlpatterns = [
     path('push/public-key/', PushPublicKeyView.as_view(), name='push-public-key'),
     path('push/subscriptions/', PushSubscriptionView.as_view(), name='push-subscriptions'),
     path('push/unsubscribe/', PushSubscriptionView.as_view(), name='push-unsubscribe'),
+    path('logout/', LogoutView.as_view(), name='logout'),
+    path('devices/', DeviceSessionsView.as_view(), name='device-sessions'),
+    path('devices/<int:session_id>/', DeviceSessionDetailView.as_view(), name='device-session-detail'),
+    path('messaging/ws-ticket/', WebSocketTicketView.as_view(), name='websocket-ticket'),
 ] + router.urls

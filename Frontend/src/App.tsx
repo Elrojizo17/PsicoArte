@@ -13,6 +13,7 @@ import { PagosPage } from './pages/PagosPage'
 import { MensajeriaPage } from './pages/MensajeriaPage'
 import { AutomatizacionPage } from './pages/AutomatizacionPage'
 import { PlantillasClasesPage } from './pages/PlantillasClasesPage'
+import { DeviceSessionsPage } from './pages/DeviceSessionsPage'
 
 function ProtectedRoute() {
   const location = useLocation()
@@ -28,12 +29,14 @@ function App() {
     <Route element={<ProtectedRoute />}>
       <Route element={<ParentLayout />}>
         <Route path="/perfil-padre" element={<ParentChildrenPage />} />
+        <Route path="/perfil-padre/dispositivos" element={<DeviceSessionsPage />} />
         <Route path="/perfil-padre/calendario" element={<ParentCalendarViewPage />} />
         <Route path="/perfil-padre/asistencias" element={<ParentAttendancePage />} />
         <Route path="/perfil-padre/pagos" element={<ParentPaymentsPage />} />
         <Route path="/perfil-padre/mensajeria" element={<MensajeriaPage />} />
       </Route>
       <Route element={<AppLayout />}>
+        <Route path="/dispositivos" element={<DeviceSessionsPage />} />
         <Route path="/" element={<Navigate to="/clases" replace />} />
         <Route path="/acudientes" element={<AcudientesPage />} />
         <Route path="/alumnos" element={<AlumnosPage />} />

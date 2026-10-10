@@ -45,7 +45,7 @@ class PushSubscriptionView(APIView):
         instance, created = PushSubscription.objects.update_or_create(
             endpoint=subscription['endpoint'],
             defaults={
-                'usuario': request.user,
+                'sesion': request.auth,
                 'p256dh': keys['p256dh'],
                 'auth': keys['auth'],
                 'user_agent': request.META.get('HTTP_USER_AGENT', '')[:1024],
@@ -60,7 +60,7 @@ class PushSubscriptionView(APIView):
         serializer = PushSubscriptionEndpointSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         PushSubscription.objects.filter(
-            usuario=request.user,
+            sesion=request.auth,
             endpoint=serializer.validated_data['endpoint'],
         ).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -1,15 +1,16 @@
 from datetime import timedelta
 import mimetypes
 from pathlib import Path
+import uuid
 
 from django.http import FileResponse
-from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.db.models import F, Max, Q
 from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.authtoken.models import Token
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 import logging
@@ -18,6 +19,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.response import Response
 from rest_framework import serializers
+from django.utils import timezone
 
 from .models import (
     JORNADAS_MUSICALES,
@@ -34,10 +36,43 @@ from .models import (
     PlantillaClase,
     PlantillaClaseAlumno,
     PlantillaMensaje,
+    SesionDispositivo,
+    generate_session_key,
 )
 from .messaging import dispatch_message
+from .session_views import MAX_ACTIVE_SESSIONS, close_device_session
 
 logger = logging.getLogger(__name__)
+
+
+def device_name_from_user_agent(user_agent):
+    user_agent = user_agent.lower()
+    if 'edg/' in user_agent:
+        browser = 'Edge'
+    elif 'crios/' in user_agent or 'chrome/' in user_agent:
+        browser = 'Chrome'
+    elif 'fxios/' in user_agent or 'firefox/' in user_agent:
+        browser = 'Firefox'
+    elif 'safari/' in user_agent:
+        browser = 'Safari'
+    else:
+        browser = 'Navegador'
+
+    if 'android' in user_agent:
+        platform = 'Android'
+    elif 'iphone' in user_agent or 'ipad' in user_agent:
+        platform = 'iOS'
+    elif 'windows' in user_agent:
+        platform = 'Windows'
+    elif 'macintosh' in user_agent or 'mac os' in user_agent:
+        platform = 'Mac'
+    elif 'linux' in user_agent:
+        platform = 'Linux'
+    else:
+        platform = 'dispositivo'
+    return f'{browser} en {platform}'
+
+
 from .permissions import EsPersonalEmpresa, EsPersonalEmpresaOAcudiente
 from .push import send_message_push as _send_message_push
 from .serializers import (
@@ -105,8 +140,92 @@ def login_view(request):
         acudiente = user.acudiente
         nombre = f'{acudiente.nombre_1} {acudiente.nombre_2} {acudiente.apellido_1} {acudiente.apellido_2}'.strip()
         nombre = ' '.join(nombre.split())
-    token, _ = Token.objects.get_or_create(user=user)
-    response_data = {'token': token.key, 'tipo': tipo, 'nombre': nombre}
+    device_id = request.data.get('device_id')
+    if device_id is None:
+        device_id = uuid.uuid4().hex
+    if not isinstance(device_id, str) or not device_id or len(device_id) > 64:
+        return Response({'detail': 'Identificador de dispositivo inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    close_session_id = request.data.get('cerrar_sesion_id')
+    try:
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            if close_session_id is not None:
+                try:
+                    close_session_id = int(close_session_id)
+                except (TypeError, ValueError):
+                    return Response(
+                        {'detail': 'Identificador de sesión inválido.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                session_to_close = SesionDispositivo.objects.filter(
+                    pk=close_session_id,
+                    usuario=locked_user,
+                    activo=True,
+                ).first()
+                if session_to_close is None:
+                    return Response(
+                        {'detail': 'La sesión seleccionada ya no está activa.'},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                close_device_session(session_to_close)
+
+            device_session = SesionDispositivo.objects.filter(
+                usuario=locked_user,
+                dispositivo_id=device_id,
+            ).first()
+            now = timezone.now()
+            user_agent = request.META.get('HTTP_USER_AGENT', '')[:1024]
+            if device_session and device_session.activo:
+                device_session.ultimo_uso = now
+                device_session.nombre_dispositivo = device_name_from_user_agent(user_agent)
+                device_session.save(update_fields=['ultimo_uso', 'nombre_dispositivo'])
+            else:
+                active_count = SesionDispositivo.objects.filter(
+                    usuario=locked_user,
+                    activo=True,
+                ).count()
+                if active_count >= MAX_ACTIVE_SESSIONS:
+                    active_sessions = SesionDispositivo.objects.filter(
+                        usuario=locked_user,
+                        activo=True,
+                    ).order_by('-ultimo_uso')
+                    return Response({
+                        'codigo': 'limite_dispositivos',
+                        'dispositivos': [
+                            {
+                                'id': session.pk,
+                                'nombre': session.nombre_dispositivo,
+                                'ultimo_uso': session.ultimo_uso,
+                            }
+                            for session in active_sessions
+                        ],
+                    }, status=status.HTTP_409_CONFLICT)
+
+                if device_session:
+                    device_session.key = generate_session_key()
+                    device_session.nombre_dispositivo = device_name_from_user_agent(user_agent)
+                    device_session.creado = now
+                    device_session.ultimo_uso = now
+                    device_session.activo = True
+                    device_session.save(update_fields=['key', 'nombre_dispositivo', 'creado', 'ultimo_uso', 'activo'])
+                else:
+                    device_session = SesionDispositivo.objects.create(
+                        usuario=locked_user,
+                        dispositivo_id=device_id,
+                        nombre_dispositivo=device_name_from_user_agent(user_agent),
+                        ultimo_uso=now,
+                    )
+    except User.DoesNotExist:
+        return Response({'detail': 'El usuario ya no está disponible.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    response_data = {
+        'token': device_session.key,
+        'device_id': device_id,
+        'session_id': device_session.pk,
+        'tipo': tipo,
+        'nombre': nombre,
+    }
     if tipo == 'empresa':
         response_data['grupo'] = grupo
     return Response(response_data)

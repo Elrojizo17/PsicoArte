@@ -200,14 +200,17 @@ export function MensajeriaPage() {
   useEffect(() => { if (!isParent) void api.get<Jornada[]>(endpoints.jornadas).then(({ data }) => setJornadas(data)).catch(() => {}) }, [isParent])
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    const socketUrl = `${socketOrigin}/ws/mensajeria/?token=${encodeURIComponent(token || '')}`
-    const socket = new WebSocket(socketUrl)
-    socket.onmessage = event => {
-      const message = JSON.parse(event.data) as Mensaje
-      inboxMessageHandlerRef.current(message)
-    }
-    return () => socket.close()
+    let active = true
+    let socket: WebSocket | null = null
+    void api.post<{ ticket: string }>('/messaging/ws-ticket/').then(({ data }) => {
+      if (!active) return
+      socket = new WebSocket(`${socketOrigin}/ws/mensajeria/`, ['psicoarte', `ticket.${data.ticket}`])
+      socket.onmessage = event => {
+        const message = JSON.parse(event.data) as Mensaje
+        inboxMessageHandlerRef.current(message)
+      }
+    }).catch(() => console.error('[PsicoArte messaging] could not obtain WebSocket ticket'))
+    return () => { active = false; socket?.close() }
   }, [])
 
   useEffect(() => {
@@ -216,26 +219,28 @@ export function MensajeriaPage() {
     setMessagesLoading(true)
     api.get<Mensaje[]>(`${endpoints.mensajes}?conversacion=${selected.id}`).then(response => { if (active) setMessages(response.data) }).catch(() => setError('No se pudieron cargar los mensajes.')).finally(() => { if (active) setMessagesLoading(false) })
     void api.post(`${endpoints.conversaciones}${selected.id}/marcar-leidos/`)
-    const token = localStorage.getItem('token')
-    const socketUrl = `${socketOrigin}/ws/mensajeria/${selected.id}/?token=${encodeURIComponent(token || '')}`
-    console.log('[PsicoArte messaging] opening WebSocket', { socketUrl: socketUrl.replace(/([?&]token=)[^&]*/, '$1[redacted]'), pageOrigin: window.location.origin })
-    const socket = new WebSocket(socketUrl)
-    socket.onopen = () => console.log('[PsicoArte messaging] WebSocket connected', { conversationId: selected.id })
-    socket.onerror = event => console.error('[PsicoArte messaging] WebSocket error', event)
-    socket.onclose = event => console.log('[PsicoArte messaging] WebSocket closed', { conversationId: selected.id, code: event.code, reason: event.reason, wasClean: event.wasClean })
-    socket.onmessage = event => {
-      const payload = JSON.parse(event.data) as Mensaje | { type: 'read_receipt' }
-      if ('type' in payload && payload.type === 'read_receipt') {
-        void api.get<Mensaje[]>(`${endpoints.mensajes}?conversacion=${selected.id}`).then(response => {
-          if (active) setMessages(response.data)
-        }).catch(() => { /* The periodic refresh will load the updated read state. */ })
-        return
+    let socket: WebSocket | null = null
+    void api.post<{ ticket: string }>('/messaging/ws-ticket/').then(({ data }) => {
+      if (!active) return
+      socket = new WebSocket(`${socketOrigin}/ws/mensajeria/${selected.id}/`, ['psicoarte', `ticket.${data.ticket}`])
+      console.log('[PsicoArte messaging] opening WebSocket', { conversationId: selected.id, pageOrigin: window.location.origin })
+      socket.onopen = () => console.log('[PsicoArte messaging] WebSocket connected', { conversationId: selected.id })
+      socket.onerror = event => console.error('[PsicoArte messaging] WebSocket error', event)
+      socket.onclose = event => console.log('[PsicoArte messaging] WebSocket closed', { conversationId: selected.id, code: event.code, reason: event.reason, wasClean: event.wasClean })
+      socket.onmessage = event => {
+        const payload = JSON.parse(event.data) as Mensaje | { type: 'read_receipt' }
+        if ('type' in payload && payload.type === 'read_receipt') {
+          void api.get<Mensaje[]>(`${endpoints.mensajes}?conversacion=${selected.id}`).then(response => {
+            if (active) setMessages(response.data)
+          }).catch(() => { /* The periodic refresh will load the updated read state. */ })
+          return
+        }
+        const message = payload as Mensaje
+        console.log('[PsicoArte messaging] WebSocket message received', { conversationId: selected.id, messageId: message.id, own: message.es_propio })
+        inboxMessageHandlerRef.current(message)
       }
-      const message = payload as Mensaje
-      console.log('[PsicoArte messaging] WebSocket message received', { conversationId: selected.id, messageId: message.id, own: message.es_propio })
-      inboxMessageHandlerRef.current(message)
-    }
-    socketRef.current = socket
+      socketRef.current = socket
+    }).catch(() => console.error('[PsicoArte messaging] could not obtain WebSocket ticket'))
     const refresh = window.setInterval(async () => {
       try {
         const response = await api.get<Mensaje[]>(`${endpoints.mensajes}?conversacion=${selected.id}`)
@@ -254,7 +259,7 @@ export function MensajeriaPage() {
         })
       } catch { /* Preserve the conversation during temporary network loss. */ }
     }, 5000)
-    return () => { active = false; window.clearInterval(refresh); socket.close(); socketRef.current = null }
+    return () => { active = false; window.clearInterval(refresh); socket?.close(); socketRef.current = null }
   }, [selected?.id])
 
   useEffect(() => {

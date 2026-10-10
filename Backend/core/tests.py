@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import sys
 from types import ModuleType
 from unittest.mock import Mock, patch
@@ -23,11 +23,22 @@ from .models import (
     PlantillaMensaje,
     PushSubscription,
     RecordatorioEnviado,
+    SesionDispositivo,
+    TicketWebSocket,
 )
 
 
 class ApiCrudTests(APITestCase):
     def setUp(self):
+        self.user = User.objects.create_user(username='api-crud-staff', password='test-password')
+        self.user.groups.add(Group.objects.get_or_create(name='Psicologia')[0])
+        session = SesionDispositivo.objects.create(
+            usuario=self.user,
+            dispositivo_id='api-crud-test-device',
+            nombre_dispositivo='Test browser',
+            ultimo_uso=timezone.now(),
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {session.key}')
         self.acudiente = Acudiente.objects.create(
             numero_documento='9001',
             nombre_1='Ana',
@@ -203,11 +214,144 @@ class ConversationOrderingApiTests(APITestCase):
         self.assertEqual(preview['no_leidos'], 2)
 
 
+class DeviceSessionApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='session-user', password='test-password')
+        self.user.groups.add(Group.objects.get_or_create(name='Psicologia')[0])
+        self.login_url = reverse('login')
+        self.device_id = 'installed-device-123'
+
+    def create_session(self, device_id, active=True):
+        return SesionDispositivo.objects.create(
+            usuario=self.user,
+            dispositivo_id=device_id,
+            nombre_dispositivo=f'Chrome {device_id}',
+            ultimo_uso=timezone.now(),
+            activo=active,
+        )
+
+    def login(self, **extra):
+        with patch('rest_framework.throttling.AnonRateThrottle.allow_request', return_value=True):
+            return self.client.post(
+                self.login_url,
+                {'username': self.user.username, 'password': 'test-password', 'device_id': self.device_id, **extra},
+                format='json',
+                HTTP_USER_AGENT='Mozilla/5.0 (Linux; Android 14) Chrome/125.0',
+            )
+
+    def test_login_rejects_fourth_active_device_with_device_list(self):
+        sessions = [self.create_session(f'active-device-{index}') for index in range(3)]
+
+        response = self.login()
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data['codigo'], 'limite_dispositivos')
+        self.assertEqual(
+            {item['id'] for item in response.data['dispositivos']},
+            {session.pk for session in sessions},
+        )
+        self.assertEqual(
+            set(response.data['dispositivos'][0]),
+            {'id', 'nombre', 'ultimo_uso'},
+        )
+
+    def test_login_closes_selected_session_then_creates_new_device_session(self):
+        sessions = [self.create_session(f'active-device-{index}') for index in range(3)]
+
+        response = self.login(cerrar_sesion_id=sessions[0].pk)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        sessions[0].refresh_from_db()
+        self.assertFalse(sessions[0].activo)
+        self.assertEqual(
+            SesionDispositivo.objects.filter(usuario=self.user, activo=True).count(),
+            3,
+        )
+        self.assertEqual(response.data['device_id'], self.device_id)
+        self.assertEqual(len(response.data['token']), 64)
+
+    def test_login_reuses_existing_device_session(self):
+        existing = self.create_session(self.device_id)
+
+        response = self.login()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['session_id'], existing.pk)
+        self.assertEqual(response.data['token'], existing.key)
+        self.assertEqual(SesionDispositivo.objects.filter(usuario=self.user).count(), 1)
+
+    def test_logout_closes_only_current_session_and_removes_its_push(self):
+        current = self.create_session('current-device')
+        other = self.create_session('other-device')
+        current_push = PushSubscription.objects.create(
+            sesion=current,
+            endpoint='https://push.example.test/session/current',
+            p256dh='current-p256dh',
+            auth='current-auth',
+        )
+        other_push = PushSubscription.objects.create(
+            sesion=other,
+            endpoint='https://push.example.test/session/other',
+            p256dh='other-p256dh',
+            auth='other-auth',
+        )
+        ticket = TicketWebSocket.objects.create(
+            sesion=current,
+            expira_en=timezone.now() + timedelta(seconds=30),
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {current.key}')
+
+        response = self.client.post(reverse('logout'))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        current.refresh_from_db()
+        other.refresh_from_db()
+        self.assertFalse(current.activo)
+        self.assertTrue(other.activo)
+        self.assertFalse(PushSubscription.objects.filter(pk=current_push.pk).exists())
+        self.assertTrue(PushSubscription.objects.filter(pk=other_push.pk).exists())
+        self.assertFalse(TicketWebSocket.objects.filter(pk=ticket.pk).exists())
+        unauthorized = self.client.get(reverse('device-sessions'))
+        self.assertEqual(unauthorized.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_closed_session_key_returns_401(self):
+        session = self.create_session('closed-device', active=False)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {session.key}')
+
+        response = self.client.get(reverse('device-sessions'))
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_websocket_ticket_can_only_be_consumed_once(self):
+        from .websocket_auth import consume_websocket_ticket
+
+        session = self.create_session('ticket-device')
+        ticket = TicketWebSocket.objects.create(
+            sesion=session,
+            expira_en=timezone.now() + timedelta(seconds=30),
+        )
+
+        self.assertEqual(consume_websocket_ticket(ticket.key), (self.user, session.pk))
+        self.assertIsNone(consume_websocket_ticket(ticket.key))
+
+
 class PushSubscriptionApiTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='push-user', password='test-password')
         self.other_user = User.objects.create_user(username='other-user', password='test-password')
-        self.client.force_authenticate(self.user)
+        self.session = SesionDispositivo.objects.create(
+            usuario=self.user,
+            dispositivo_id='push-device',
+            nombre_dispositivo='Chrome en Android',
+            ultimo_uso=timezone.now(),
+        )
+        self.other_session = SesionDispositivo.objects.create(
+            usuario=self.other_user,
+            dispositivo_id='other-device',
+            nombre_dispositivo='Safari en iOS',
+            ultimo_uso=timezone.now(),
+        )
+        self.client.force_authenticate(self.user, token=self.session)
         self.public_key_url = reverse('push-public-key')
         self.subscriptions_url = reverse('push-subscriptions')
         self.unsubscribe_url = reverse('push-unsubscribe')
@@ -251,7 +395,7 @@ class PushSubscriptionApiTests(APITestCase):
         self.assertFalse(second_response.data['created'])
         self.assertEqual(PushSubscription.objects.count(), 1)
         saved = PushSubscription.objects.get()
-        self.assertEqual(saved.usuario, self.user)
+        self.assertEqual(saved.sesion, self.session)
         self.assertEqual(saved.p256dh, 'test-p256dh')
         self.assertEqual(saved.auth, 'test-auth')
         self.assertEqual(saved.user_agent, 'PsicoArte test browser')
@@ -267,7 +411,7 @@ class PushSubscriptionApiTests(APITestCase):
 
     def test_delete_subscription_only_removes_current_users_endpoint(self):
         subscription = PushSubscription.objects.create(
-            usuario=self.other_user,
+            sesion=self.other_session,
             endpoint=self.subscription_data['endpoint'],
             p256dh='test-p256dh',
             auth='test-auth',
@@ -280,8 +424,8 @@ class PushSubscriptionApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertTrue(PushSubscription.objects.filter(pk=subscription.pk).exists())
 
-        subscription.usuario = self.user
-        subscription.save(update_fields=['usuario'])
+        subscription.sesion = self.session
+        subscription.save(update_fields=['sesion'])
         response = self.client.delete(
             self.subscriptions_url,
             {'endpoint': self.subscription_data['endpoint']},
@@ -292,7 +436,7 @@ class PushSubscriptionApiTests(APITestCase):
 
     def test_unsubscribe_endpoint_only_removes_current_users_endpoint(self):
         subscription = PushSubscription.objects.create(
-            usuario=self.other_user,
+            sesion=self.other_session,
             endpoint=self.subscription_data['endpoint'],
             p256dh='test-p256dh',
             auth='test-auth',
@@ -305,8 +449,8 @@ class PushSubscriptionApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertTrue(PushSubscription.objects.filter(pk=subscription.pk).exists())
 
-        subscription.usuario = self.user
-        subscription.save(update_fields=['usuario'])
+        subscription.sesion = self.session
+        subscription.save(update_fields=['sesion'])
         response = self.client.delete(
             self.unsubscribe_url,
             {'endpoint': self.subscription_data['endpoint']},
@@ -337,6 +481,52 @@ class PushSubscriptionApiTests(APITestCase):
         self.assertEqual(post_response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(delete_response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(unsubscribe_response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class PushDeliveryTests(TestCase):
+    @override_settings(
+        VAPID_PUBLIC_KEY='test-public-key',
+        VAPID_PRIVATE_KEY='test-private-key',
+        VAPID_ADMIN_EMAIL='test@example.com',
+    )
+    def test_push_is_sent_to_each_active_session_of_the_recipient(self):
+        from .push import send_message_push
+
+        recipient = User.objects.create_user(username='multi-push-parent', password='test-password')
+        sender = User.objects.create_user(username='multi-push-staff', password='test-password')
+        guardian = Acudiente.objects.create(
+            usuario=recipient,
+            numero_documento='multi-push-parent',
+            nombre_1='Parent',
+            apellido_1='Test',
+            tipo_documento='CC',
+            telefono_1='3000000000',
+        )
+        conversation = Conversacion.objects.create(acudiente=guardian)
+        message = Mensaje.objects.create(conversacion=conversation, remitente=sender, cuerpo='Hola')
+        for index in range(2):
+            session = SesionDispositivo.objects.create(
+                usuario=recipient,
+                dispositivo_id=f'multi-push-device-{index}',
+                nombre_dispositivo=f'Device {index}',
+                ultimo_uso=timezone.now(),
+            )
+            PushSubscription.objects.create(
+                sesion=session,
+                endpoint=f'https://push.example.test/multi-device/{index}',
+                p256dh='test-p256dh',
+                auth='test-auth',
+            )
+
+        webpush = Mock()
+        push_module = ModuleType('pywebpush')
+        push_module.WebPushException = type('WebPushException', (Exception,), {})
+        push_module.webpush = webpush
+        with patch.dict(sys.modules, {'pywebpush': push_module}):
+            sent, failed = send_message_push(message)
+
+        self.assertEqual((sent, failed), (2, 0))
+        self.assertEqual(webpush.call_count, 2)
 
 
 class ReminderTaskTests(TestCase):
@@ -371,10 +561,12 @@ class ReminderTaskTests(TestCase):
             fecha=self.now.date(),
         )
         AlumnoClase.objects.create(alumno=self.alumno, clase=self.clase)
-        PlantillaMensaje.objects.create(
+        PlantillaMensaje.objects.update_or_create(
             tipo=PlantillaMensaje.RECORDATORIO_CLASE,
-            texto='Recordatorio para {alumno} a las {hora} ({jornada}).',
-            activo=True,
+            defaults={
+                'texto': 'Recordatorio para {alumno} a las {hora} ({jornada}).',
+                'activo': True,
+            },
         )
 
     def test_recordatorio_no_se_duplica_al_ejecutar_dos_ciclos(self):
@@ -405,9 +597,27 @@ class ReminderTaskTests(TestCase):
             acudiente=self.acudiente,
         )
         AlumnoClase.objects.create(alumno=second_student, clase=self.clase)
-        PushSubscription.objects.create(
+        session_one = SesionDispositivo.objects.create(
             usuario=self.user,
+            dispositivo_id='reminder-device-one',
+            nombre_dispositivo='Chrome en Android',
+            ultimo_uso=self.now,
+        )
+        session_two = SesionDispositivo.objects.create(
+            usuario=self.user,
+            dispositivo_id='reminder-device-two',
+            nombre_dispositivo='Safari en iOS',
+            ultimo_uso=self.now,
+        )
+        PushSubscription.objects.create(
+            sesion=session_one,
             endpoint='https://push.example.test/subscription/reminder',
+            p256dh='test-p256dh',
+            auth='test-auth',
+        )
+        PushSubscription.objects.create(
+            sesion=session_two,
+            endpoint='https://push.example.test/subscription/reminder-two',
             p256dh='test-p256dh',
             auth='test-auth',
         )
@@ -423,4 +633,4 @@ class ReminderTaskTests(TestCase):
                         revisar_recordatorios()
 
         self.assertEqual(Mensaje.objects.filter(automatico=True).count(), 2)
-        webpush.assert_called_once()
+        self.assertEqual(webpush.call_count, 2)

@@ -1,11 +1,10 @@
-from urllib.parse import parse_qs
 import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from rest_framework.authtoken.models import Token
 
 from .models import Acudiente, Conversacion
+from .websocket_auth import consume_websocket_ticket
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +12,9 @@ logger = logging.getLogger(__name__)
 class MessagingConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
-        token = parse_qs(self.scope['query_string'].decode()).get('token', [None])[0]
-        self.user = await self.get_user(token)
+        ticket = get_ticket_from_protocols(self.scope.get('subprotocols', []))
+        identity = await self.get_user(ticket)
+        self.user, self.session_id = identity if identity else (None, None)
         if not self.user or not await self.can_access_conversation():
             logger.warning('WebSocket messaging rejected conversation_id=%s authenticated=%s', self.conversation_id, bool(self.user))
             await self.close(code=4401)
@@ -22,13 +22,20 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
 
         self.group_name = f'mensajeria_{self.conversation_id}'
         await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+        self.session_group_name = f'device_session_{self.session_id}'
+        await self.channel_layer.group_add(self.session_group_name, self.channel_name)
+        await self.accept(subprotocol='psicoarte')
         logger.info('WebSocket messaging connected conversation_id=%s user_id=%s', self.conversation_id, self.user.id)
 
     async def disconnect(self, close_code):
         logger.info('WebSocket messaging disconnected conversation_id=%s close_code=%s', getattr(self, 'conversation_id', None), close_code)
         if hasattr(self, 'group_name'):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        if hasattr(self, 'session_group_name'):
+            await self.channel_layer.group_discard(self.session_group_name, self.channel_name)
+
+    async def session_closed(self, event):
+        await self.close(code=4401)
 
     async def receive_json(self, content, **kwargs):
         if content.get('action') == 'mark_read':
@@ -43,13 +50,8 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({'type': 'read_receipt'})
 
     @database_sync_to_async
-    def get_user(self, token_key):
-        if not token_key:
-            return None
-        try:
-            return Token.objects.select_related('user').get(key=token_key).user
-        except Token.DoesNotExist:
-            return None
+    def get_user(self, ticket_key):
+        return consume_websocket_ticket(ticket_key)
 
     @database_sync_to_async
     def can_access_conversation(self):
@@ -72,8 +74,9 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
 
 class MessagingInboxConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        token = parse_qs(self.scope['query_string'].decode()).get('token', [None])[0]
-        self.user = await self.get_user(token)
+        ticket = get_ticket_from_protocols(self.scope.get('subprotocols', []))
+        identity = await self.get_user(ticket)
+        self.user, self.session_id = identity if identity else (None, None)
         if not self.user or not await self.can_access_inbox():
             logger.warning('Messaging inbox WebSocket rejected authenticated=%s', bool(self.user))
             await self.close(code=4401)
@@ -84,11 +87,18 @@ class MessagingInboxConsumer(AsyncJsonWebsocketConsumer):
             self.groups.append('mensajeria_personal')
         for group in self.groups:
             await self.channel_layer.group_add(group, self.channel_name)
-        await self.accept()
+        self.session_group_name = f'device_session_{self.session_id}'
+        await self.channel_layer.group_add(self.session_group_name, self.channel_name)
+        await self.accept(subprotocol='psicoarte')
 
     async def disconnect(self, close_code):
         for group in getattr(self, 'groups', []):
             await self.channel_layer.group_discard(group, self.channel_name)
+        if hasattr(self, 'session_group_name'):
+            await self.channel_layer.group_discard(self.session_group_name, self.channel_name)
+
+    async def session_closed(self, event):
+        await self.close(code=4401)
 
     async def message_created(self, event):
         message = {
@@ -98,13 +108,8 @@ class MessagingInboxConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(message)
 
     @database_sync_to_async
-    def get_user(self, token_key):
-        if not token_key:
-            return None
-        try:
-            return Token.objects.select_related('user').get(key=token_key).user
-        except Token.DoesNotExist:
-            return None
+    def get_user(self, ticket_key):
+        return consume_websocket_ticket(ticket_key)
 
     @database_sync_to_async
     def can_access_inbox(self):
@@ -116,3 +121,10 @@ class MessagingInboxConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def is_staff(self):
         return self.user.groups.filter(name__in=['Psicologia', 'Musical']).exists()
+
+
+def get_ticket_from_protocols(protocols):
+    for protocol in protocols:
+        if protocol.startswith('ticket.'):
+            return protocol.removeprefix('ticket.')
+    return None

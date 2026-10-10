@@ -2,6 +2,7 @@ import { CalendarClock, CalendarDays, ClipboardList, CreditCard, FileBadge, Hear
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
+import { unsubscribePush } from '../services/push'
 
 const baseNavigation = [
   { to: '/acudientes', label: 'Gestionar Acudientes', icon: HeartHandshake },
@@ -22,7 +23,8 @@ export function AppLayout() {
     ]
     : baseNavigation
 
-  function handleLogout() {
+  async function handleLogout() {
+    await unsubscribePush()
     localStorage.removeItem('token')
     localStorage.removeItem('tipo')
     localStorage.removeItem('grupo')

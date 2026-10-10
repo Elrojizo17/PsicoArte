@@ -210,6 +210,7 @@ class PushSubscriptionApiTests(APITestCase):
         self.client.force_authenticate(self.user)
         self.public_key_url = reverse('push-public-key')
         self.subscriptions_url = reverse('push-subscriptions')
+        self.unsubscribe_url = reverse('push-unsubscribe')
         self.subscription_data = {
             'endpoint': 'https://push.example.test/subscription/123',
             'keys': {'p256dh': 'test-p256dh', 'auth': 'test-auth'},
@@ -289,6 +290,31 @@ class PushSubscriptionApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(PushSubscription.objects.filter(pk=subscription.pk).exists())
 
+    def test_unsubscribe_endpoint_only_removes_current_users_endpoint(self):
+        subscription = PushSubscription.objects.create(
+            usuario=self.other_user,
+            endpoint=self.subscription_data['endpoint'],
+            p256dh='test-p256dh',
+            auth='test-auth',
+        )
+        response = self.client.delete(
+            self.unsubscribe_url,
+            {'endpoint': self.subscription_data['endpoint']},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(PushSubscription.objects.filter(pk=subscription.pk).exists())
+
+        subscription.usuario = self.user
+        subscription.save(update_fields=['usuario'])
+        response = self.client.delete(
+            self.unsubscribe_url,
+            {'endpoint': self.subscription_data['endpoint']},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(PushSubscription.objects.filter(pk=subscription.pk).exists())
+
     def test_subscription_endpoints_require_authentication(self):
         self.client.force_authenticate(user=None)
         get_response = self.client.get(self.public_key_url)
@@ -302,9 +328,15 @@ class PushSubscriptionApiTests(APITestCase):
             {'endpoint': self.subscription_data['endpoint']},
             format='json',
         )
+        unsubscribe_response = self.client.delete(
+            self.unsubscribe_url,
+            {'endpoint': self.subscription_data['endpoint']},
+            format='json',
+        )
         self.assertEqual(get_response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(post_response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(delete_response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(unsubscribe_response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class ReminderTaskTests(TestCase):

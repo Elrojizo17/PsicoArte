@@ -2,6 +2,7 @@ import { CalendarDays, ClipboardCheck, CreditCard, LogOut, Menu, UserRound, X } 
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
+import { unsubscribePush } from '../services/push'
 
 const navigation = [
   { to: '/perfil-padre', label: 'Mis niños', icon: UserRound, end: true },
@@ -15,7 +16,8 @@ export function ParentLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const name = localStorage.getItem('nombre') || 'Familia PsicoArte'
 
-  const logout = () => {
+  const logout = async () => {
+    await unsubscribePush()
     localStorage.removeItem('token')
     localStorage.removeItem('tipo')
     localStorage.removeItem('grupo')

@@ -39,4 +39,5 @@ urlpatterns = [
     path('mensajeria/mensajes-masivos/', mensaje_masivo_view, name='mensaje-masivo'),
     path('push/public-key/', PushPublicKeyView.as_view(), name='push-public-key'),
     path('push/subscriptions/', PushSubscriptionView.as_view(), name='push-subscriptions'),
+    path('push/unsubscribe/', PushSubscriptionView.as_view(), name='push-unsubscribe'),
 ] + router.urls

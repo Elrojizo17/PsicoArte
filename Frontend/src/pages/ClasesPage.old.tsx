@@ -428,11 +428,11 @@ export function ClasesPage() {
         <div className="flex rounded-full border border-primary-light bg-white p-1">{(['month', 'week', 'day'] as CalendarView[]).map(view => <button key={view} type="button" onClick={() => setCalendarView(view)} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${calendarView === view ? 'bg-primary-dark text-white' : 'text-primary-dark hover:bg-background'}`}>{view === 'month' ? 'Mes' : view === 'week' ? 'Semana' : 'Día'}</button>)}</div>
       </div>
 
-      <div className="min-h-0 lg:flex-1 lg:overflow-auto lg:overscroll-contain">
+      <div className={`min-h-0 lg:flex-1 ${calendarView === 'week' ? 'lg:overflow-hidden' : 'lg:overflow-auto lg:overscroll-contain'}`}>
       {loading ? (
         <LoadingState />
       ) : (
-        calendarView === 'month' ? <MonthCalendar month={week} classes={classes} onOpen={openDetails} /> : calendarView === 'day' ? <DayClasses day={week} classes={classes} onOpen={openDetails} onEdit={openEdit} onRemove={(id) => void remove(id)} /> : <div className="overflow-x-auto rounded-2xl border border-primary-light/70 bg-white/80 shadow-sm">
+        calendarView === 'month' ? <MonthCalendar month={week} classes={classes} onOpen={openDetails} /> : calendarView === 'day' ? <DayClasses day={week} classes={classes} onOpen={openDetails} onEdit={openEdit} onRemove={(id) => void remove(id)} /> : <div className="overflow-x-auto rounded-2xl border border-primary-light/70 bg-white/80 shadow-sm lg:h-full lg:overflow-y-auto">
           <div className="min-w-[850px]">
             <div className="grid grid-cols-[64px_repeat(7,minmax(105px,1fr))] border-b border-primary-light/50">
               <div className="p-3" />

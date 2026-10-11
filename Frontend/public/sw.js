@@ -1,4 +1,5 @@
-const CACHE_NAME = 'psicoarte-shell-v4'
+const DEPLOYMENT_ID = '__DEPLOYMENT_ID__'
+const CACHE_NAME = `psicoarte-shell-${DEPLOYMENT_ID}`
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/logo.png']
 
 self.addEventListener('install', (event) => {
@@ -66,6 +67,21 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) return
   if (event.request.headers.get('Upgrade')?.toLowerCase() === 'websocket') return
   if (event.request.headers.has('Authorization')) return
+
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then(async (response) => {
+          if (response.ok) {
+            const cache = await caches.open(CACHE_NAME)
+            await cache.put(event.request, response.clone())
+          }
+          return response
+        })
+        .catch(async () => (await caches.match(event.request)) || (await caches.match('/index.html')) || Response.error()),
+    )
+    return
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {

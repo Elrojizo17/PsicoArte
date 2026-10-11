@@ -7,8 +7,13 @@ import App from './App.tsx'
 import './index.css'
 
 if ('serviceWorker' in navigator) {
+  const hadController = Boolean(navigator.serviceWorker.controller)
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) window.location.reload()
+  }, { once: true })
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((error) => {
       console.error('No se pudo registrar el service worker:', error)
     })
   })

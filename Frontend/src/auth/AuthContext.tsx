@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import axios from 'axios'
-import { api } from '../services/api'
+import { api, getApiErrorMessage } from '../services/api'
 import { clearStoredSession } from '../services/sessionStorage'
 
 export type UserProfile = {
@@ -58,7 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshProfile().catch((reason: unknown) => {
       if (!active) return
       if (axios.isAxiosError(reason) && reason.response?.status === 401) {
+        const loginNotice = sessionStorage.getItem('loginNotice') || getApiErrorMessage(reason)
         clearStoredSession()
+        sessionStorage.setItem('loginNotice', loginNotice)
         setProfile(null)
       } else {
         setError('No se pudo validar la sesión. Revisa tu conexión e inténtalo de nuevo.')

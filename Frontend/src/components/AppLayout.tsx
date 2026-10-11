@@ -13,7 +13,6 @@ const baseNavigation = [
   { to: '/plantillas-clases', label: 'Plantillas de clases', icon: ClipboardList },
   { to: '/pagos', label: 'Pagos', icon: CreditCard },
   { to: '/automatizacion', label: 'Automatización de mensajes', icon: Settings2 },
-  { to: '/dispositivos', label: 'Mis dispositivos', icon: Smartphone },
 ]
 
 export function AppLayout() {
@@ -57,6 +56,7 @@ export function AppLayout() {
           </button>
         </div>
       </div>
+      <NavLink to="/dispositivos" onClick={() => setMenuOpen(false)} className={({ isActive }) => `mt-4 flex min-h-12 items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-bold shadow-sm transition hover:bg-primary-dark lg:justify-start ${isActive ? 'bg-primary-dark text-white' : 'bg-primary text-white'}`}><Smartphone size={18} strokeWidth={2.4} /><span>Mis dispositivos</span></NavLink>
       <nav id="personal-navigation" className={`${menuOpen ? 'grid' : 'hidden'} mt-6 grid-cols-2 gap-3 lg:mt-12 lg:grid lg:grid-cols-1 lg:gap-4`}>
         {navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} onClick={() => setMenuOpen(false)} className={({ isActive }) => `group flex min-h-12 items-center justify-center gap-2 rounded-full px-3 py-3 text-center text-sm font-bold shadow-sm transition hover:-translate-y-0.5 hover:bg-primary-dark lg:justify-start lg:px-4 ${isActive ? 'bg-primary-dark text-white' : 'bg-primary text-white'}`}><Icon size={18} strokeWidth={2.4} /><span>{label}</span></NavLink>)}
       <MessageNotifications to="/mensajeria" label={'Mensajer\u00eda'} onNavigate={() => setMenuOpen(false)} />

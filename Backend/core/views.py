@@ -41,6 +41,7 @@ from .models import (
 )
 from .messaging import dispatch_message
 from .session_views import MAX_ACTIVE_SESSIONS, close_device_session
+from .user_profile import get_user_profile
 
 logger = logging.getLogger(__name__)
 
@@ -127,19 +128,12 @@ def login_view(request):
     if user is None:
         return Response({'detail': 'Credenciales inválidas'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    grupo = user.groups.filter(name__in=['Psicologia', 'Musical']).order_by('id').values_list('name', flat=True).first()
-    if grupo:
-        tipo = 'empresa'
-    elif hasattr(user, 'acudiente'):
-        tipo = 'acudiente'
-    else:
+    profile = get_user_profile(user)
+    if profile is None:
         return Response({'detail': 'Credenciales inválidas'}, status=status.HTTP_401_UNAUTHORIZED)
-
-    nombre = user.get_full_name().strip() or user.username
-    if tipo == 'acudiente':
-        acudiente = user.acudiente
-        nombre = f'{acudiente.nombre_1} {acudiente.nombre_2} {acudiente.apellido_1} {acudiente.apellido_2}'.strip()
-        nombre = ' '.join(nombre.split())
+    tipo = profile['tipo']
+    grupo = profile['grupo']
+    nombre = profile['nombre']
     device_id = request.data.get('device_id')
     if device_id is None:
         device_id = uuid.uuid4().hex
@@ -229,6 +223,15 @@ def login_view(request):
     if tipo == 'empresa':
         response_data['grupo'] = grupo
     return Response(response_data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def current_user_view(request):
+    profile = get_user_profile(request.user)
+    if profile is None:
+        return Response({'detail': 'Usuario sin perfil válido.'}, status=status.HTTP_403_FORBIDDEN)
+    return Response(profile)
 
 
 class AcudienteViewSet(viewsets.ModelViewSet):

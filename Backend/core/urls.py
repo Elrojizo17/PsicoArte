@@ -7,6 +7,7 @@ from .views import (
     ClaseProgramadaViewSet,
     JornadaViewSet,
     login_view,
+    current_user_view,
     PagoViewSet,
     AsistenciaViewSet,
     ConversacionViewSet,
@@ -41,6 +42,7 @@ router.register('automatizacion/plantillas', PlantillaMensajeListUpdateView, bas
 
 urlpatterns = [
     path('login/', login_view, name='login'),
+    path('me/', current_user_view, name='current-user'),
     path('automatizacion/aviso-pagos/', aviso_pagos_view, name='aviso-pagos'),
     path('mensajeria/mensajes-masivos/', mensaje_masivo_view, name='mensaje-masivo'),
     path('push/public-key/', PushPublicKeyView.as_view(), name='push-public-key'),

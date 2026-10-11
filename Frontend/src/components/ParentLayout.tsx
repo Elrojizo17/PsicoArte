@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
 import { logoutCurrentSession } from '../services/push'
+import { clearStoredSession } from '../services/sessionStorage'
+import { useAuth } from '../auth/AuthContext'
 
 const navigation = [
   { to: '/perfil-padre', label: 'Mis niños', icon: UserRound, end: true },
@@ -14,17 +16,21 @@ const navigation = [
 
 export function ParentLayout() {
   const navigate = useNavigate()
+  const { setProfile } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const name = localStorage.getItem('nombre') || 'Familia PsicoArte'
 
-  const logout = async () => {
-    await logoutCurrentSession()
-    localStorage.removeItem('token')
-    localStorage.removeItem('session_id')
-    localStorage.removeItem('tipo')
-    localStorage.removeItem('grupo')
-    localStorage.removeItem('nombre')
-    navigate('/login', { replace: true })
+  const logout = () => {
+    let token: string | null = null
+    try {
+      token = localStorage.getItem('token')
+    } finally {
+      try { clearStoredSession() } finally {
+        setProfile(null)
+        navigate('/login', { replace: true })
+      }
+    }
+    logoutCurrentSession(token)
   }
 
   return <div className="min-h-screen bg-background text-ink lg:flex">

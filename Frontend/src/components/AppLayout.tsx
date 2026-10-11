@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { MessageNotifications } from './MessageNotifications'
 import { logoutCurrentSession } from '../services/push'
+import { clearStoredSession } from '../services/sessionStorage'
+import { useAuth } from '../auth/AuthContext'
 
 const baseNavigation = [
   { to: '/acudientes', label: 'Gestionar Acudientes', icon: HeartHandshake },
@@ -16,6 +18,7 @@ const baseNavigation = [
 
 export function AppLayout() {
   const navigate = useNavigate()
+  const { setProfile } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const navigation = localStorage.getItem('grupo') === 'Psicologia'
     ? [...baseNavigation,
@@ -24,13 +27,17 @@ export function AppLayout() {
     ]
     : baseNavigation
 
-  async function handleLogout() {
-    await logoutCurrentSession()
-    localStorage.removeItem('token')
-    localStorage.removeItem('session_id')
-    localStorage.removeItem('tipo')
-    localStorage.removeItem('grupo')
-    navigate('/login', { replace: true })
+  function handleLogout() {
+    let token: string | null = null
+    try {
+      token = localStorage.getItem('token')
+    } finally {
+      try { clearStoredSession() } finally {
+        setProfile(null)
+        navigate('/login', { replace: true })
+      }
+    }
+    logoutCurrentSession(token)
   }
 
   return <div className="min-h-screen bg-background text-ink lg:flex lg:h-screen lg:overflow-hidden">

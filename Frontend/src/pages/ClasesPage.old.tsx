@@ -425,7 +425,7 @@ export function ClasesPage() {
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2"><div className="flex rounded-full border border-primary-light bg-white p-1">{(['month', 'week', 'day'] as CalendarView[]).map(view => <button key={view} type="button" onClick={() => setCalendarView(view)} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${calendarView === view ? 'bg-primary-dark text-white' : 'text-primary-dark hover:bg-background'}`}>{view === 'month' ? 'Mes' : view === 'week' ? 'Semana' : 'Día'}</button>)}</div><button onClick={() => setWeek(monday(new Date()))} className="rounded-full border border-primary-light px-4 py-2 text-xs font-bold text-primary-dark hover:bg-background">Hoy</button></div>
+        <div className="flex rounded-full border border-primary-light bg-white p-1">{(['month', 'week', 'day'] as CalendarView[]).map(view => <button key={view} type="button" onClick={() => setCalendarView(view)} className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ${calendarView === view ? 'bg-primary-dark text-white' : 'text-primary-dark hover:bg-background'}`}>{view === 'month' ? 'Mes' : view === 'week' ? 'Semana' : 'Día'}</button>)}</div>
       </div>
 
       <div className="min-h-0 lg:flex-1 lg:overflow-auto lg:overscroll-contain">

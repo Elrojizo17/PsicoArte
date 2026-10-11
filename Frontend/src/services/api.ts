@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearStoredSession } from './sessionStorage'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api',
@@ -26,9 +27,7 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use((response) => response, (error) => {
   if (error.response?.status === 401 && localStorage.getItem('token')) {
-    localStorage.removeItem('token')
-    localStorage.removeItem('tipo')
-    localStorage.removeItem('grupo')
+    clearStoredSession()
     sessionStorage.setItem('loginNotice', getApiErrorMessage(error))
     window.location.assign('/login')
   }

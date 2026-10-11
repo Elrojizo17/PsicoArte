@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import axios from 'axios'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { api, getApiErrorMessage } from '../services/api'
+import { useAuth, type UserProfile } from '../auth/AuthContext'
 import './LoginPage.css'
 
 type LoginResponse = {
@@ -17,6 +18,7 @@ type ActiveDevice = { id: number; nombre: string; ultimo_uso: string }
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const { profile, setProfile } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -33,8 +35,11 @@ export function LoginPage() {
     )
   })
 
+  if (localStorage.getItem('token') && profile) {
+    return <Navigate to={profile.tipo === 'acudiente' ? '/perfil-padre' : '/clases'} replace />
+  }
   if (localStorage.getItem('token')) {
-    return <Navigate to={localStorage.getItem('tipo') === 'acudiente' ? '/perfil-padre' : '/clases'} replace />
+    return <main className="grid min-h-screen place-items-center bg-background p-6 text-center text-primary-dark"><p role="status">Validando tu sesión…</p></main>
   }
 
   async function submitLogin(cerrarSesionId?: number) {
@@ -59,8 +64,11 @@ export function LoginPage() {
       localStorage.setItem('tipo', data.tipo)
       if (data.grupo) localStorage.setItem('grupo', data.grupo)
       else localStorage.removeItem('grupo')
+      localStorage.setItem('nombre', data.nombre)
+      const userProfile: UserProfile = { tipo: data.tipo, grupo: data.grupo || null, nombre: data.nombre }
+      setProfile(userProfile)
       setActiveDevices([])
-      navigate(data.tipo === 'acudiente' ? '/perfil-padre' : '/clases', { replace: true })
+      navigate(userProfile.tipo === 'acudiente' ? '/perfil-padre' : '/clases', { replace: true })
     } catch (reason) {
       if (axios.isAxiosError(reason) && reason.response?.status === 409
         && reason.response.data?.codigo === 'limite_dispositivos') {

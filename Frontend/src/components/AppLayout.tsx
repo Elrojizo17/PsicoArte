@@ -66,6 +66,6 @@ export function AppLayout() {
         <span>Cerrar sesión</span>
       </button>
     </aside>
-    <main className="min-w-0 flex-1 p-4 sm:p-6 lg:h-screen lg:min-h-0 lg:overflow-hidden lg:p-8"><Outlet /></main>
+    <main className="min-w-0 flex-1 p-4 sm:p-6 lg:h-screen lg:min-h-0 lg:overflow-x-hidden lg:overflow-y-auto lg:p-8"><Outlet /></main>
   </div>
 }

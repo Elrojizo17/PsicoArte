@@ -1,4 +1,4 @@
-const CACHE_NAME = 'psicoarte-shell-v3'
+const CACHE_NAME = 'psicoarte-shell-v4'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/logo.png']
 
 self.addEventListener('install', (event) => {

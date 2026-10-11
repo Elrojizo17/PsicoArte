@@ -122,7 +122,7 @@ export function AcudientesPage() {
     }
   }
 
-  return <section className="page-enter">
+  return <section className="page-enter lg:h-full lg:overflow-x-hidden lg:overflow-y-auto">
     <PageHeader
       title="Acudientes"
       description={<span>Personas responsables y red de acompañamiento de cada alumno. <span className="mt-2 inline-flex items-center gap-1.5 font-semibold text-primary-dark"><Users size={15} className="text-primary" aria-hidden="true" />Haz clic en este ícono para ver los alumnos a cargo de cada acudiente.</span></span>}

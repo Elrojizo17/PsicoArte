@@ -96,7 +96,7 @@ export function AlumnosPage() {
     setOpen(true)
   }
 
-  return <section className="page-enter">
+  return <section className="page-enter lg:h-full lg:overflow-x-hidden lg:overflow-y-auto">
     <PageHeader eyebrow="Estudiantes" title="Alumnos" description={<span>Información académica y familiar de cada estudiante. <span className="mt-2 inline-flex items-center gap-1.5 font-semibold text-primary-dark"><BookOpen size={15} className="text-primary" aria-hidden="true" />Haz clic en este ícono para ver las clases programadas de cada alumno.</span></span>} actionLabel="Nuevo Alumno" action={() => { setEditing(null); setForm(empty); setFormError(''); setOpen(true) }} />
     {error && <div className="mb-4"><ErrorState message={error}/></div>}
     {loading ? <LoadingState/> : <div className="overflow-hidden rounded-2xl border border-primary-light/70 bg-white/80 shadow-sm">

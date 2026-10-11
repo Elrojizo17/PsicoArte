@@ -14,7 +14,8 @@
   display: flex;
   min-height: 100vh;
   width: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: var(--login-ink);
   background: var(--login-background);
   font-family: 'DM Sans', sans-serif;
@@ -84,6 +85,9 @@
   box-shadow: 0 20px 60px rgb(38 50 56 / 8%);
   animation: login-enter .45s ease-out both;
 }
+
+.login-form-wrapper.has-device-limit { width: min(100%, 600px); }
+.device-limit-alert { width: 100%; max-width: 520px; margin-inline: auto; box-sizing: border-box; }
 
 @keyframes login-enter {
   from { opacity: 0; transform: translateY(10px); }

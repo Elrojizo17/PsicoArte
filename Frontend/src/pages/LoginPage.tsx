@@ -107,7 +107,7 @@ export function LoginPage() {
 
       {/* Panel del formulario */}
       <section className="login-content" aria-labelledby="login-title">
-        <div className="login-form-wrapper">
+        <div className={`login-form-wrapper${activeDevices.length > 0 ? ' has-device-limit' : ''}`}>
           {/* Logo para versión móvil (Oculto en escritorio) */}
           <img className="login-logo-mobile" src="/logo.png" alt="Psicoarte" />
           
@@ -167,7 +167,7 @@ export function LoginPage() {
             )}
 
             {activeDevices.length > 0 && (
-              <div className="grid gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3" role="alert">
+              <div className="device-limit-alert grid gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3" role="alert" aria-live="assertive">
                 <p className="text-sm font-semibold text-amber-900">Ya hay 3 dispositivos activos. Elige uno para cerrar:</p>
                 {activeDevices.map(device => (
                   <button
